@@ -52,8 +52,8 @@ charges = {
     "yzr" : -1.0,
 }
 vac = {
-    "mu_YSZ" : 0.12 / e, # eV to J
-    "mu_cathode" : 0.2 / e,
+    "mu_YSZ" : 0.12 * e, # eV to J
+    "mu_cathode" : 0.2 * e,
     "diffusivity" : 1.0e-8,
     "bulk_cathode_conc" : 83.0,
     "bulk_YSZ_conc" : 830.0,
@@ -61,8 +61,8 @@ vac = {
 }
 
 elec = {
-    "mu_YSZ" : 0.0 / e,
-    "mu_cathode" : 0.0 / e,
+    "mu_YSZ" : 0.0 * e,
+    "mu_cathode" : 0.0 * e,
     "diffusivity" : 2.0e-4,
     "bulk_cathode_conc": charges["vac"] * vac["bulk_cathode_conc"],
     "bulk_YSZ_conc" : 0.0,
@@ -70,8 +70,8 @@ elec = {
 }
 
 yzr = {
-    "mu_YSZ" : 0.0 / e,
-    "mu_cathode" : 0.1 / e,
+    "mu_YSZ" : 0.0 * e,
+    "mu_cathode" : 0.1 * e,
     "diffusivity" : 5.0e-20,
     "bulk_cathode_conc": 0.0,
     "bulk_YSZ_conc" : 1660.0,
@@ -150,6 +150,15 @@ bt_yzr = (d_yzr_star * d_ref * t_ref) / (L_ref ** 2)
 sig_vac = alp_vac * e * phi_ref # sigma
 sig_elec = alp_elec * e * phi_ref
 sig_yzr = alp_yzr * e * phi_ref
+
+# inputs
+x_pred_val = np.linspace(xmin / L_ref, xmax / L_ref, 5000).reshape(-1, 1)
+y_pred_val = np.ones_like(x_pred_val) * 1
+
+inputs = {
+    "x": torch.as_tensor(x_pred_val, dtype=torch.float32),
+    "y": torch.as_tensor(y_pred_val, dtype=torch.float32),
+}
 
 class PDE_Function(PDE):
     def __init__(self):
@@ -516,15 +525,6 @@ def run(cfg: PhysicsNeMoConfig) -> None:
 if __name__ == "__main__":
     run()
 
-
-# inputs
-x_pred_val = np.linspace(xmin / L_ref, xmax / L_ref, 5000).reshape(-1, 1)
-y_pred_val = np.ones_like(x_pred_val) * 1
-
-inputs = {
-    "x": torch.as_tensor(x_pred_val, dtype=torch.float32),
-    "y": torch.as_tensor(y_pred_val, dtype=torch.float32),
-}
 
 
 # def plot():
