@@ -58,17 +58,17 @@ This model is using PINN(Physics Informed Neural Network) to solve an electroche
 # Model Setting
 #### 5 neural network for 5 outputs, $$\rho$$ is calculated using concentration
 #### Train $$\eta$$ first with 10000 epochs then use trained $$\eta$$ as constant
-> activation function($$\eta$$): Silu, Sigmoid(0-1)
-> activation function($$c_i$$): Silu, Softplus(guarantee positive output)
+> activation function($$\eta$$): Silu, Sigmoid(0-1) \
+> activation function($$c_i$$): Silu, Softplus(guarantee positive output) \
 > activation function($$\varphi$$): Tanh
 #### Deep Fully Connected Neural Network
-> optimizer: AdamW
-> learning rate: $$1e^{-4}$$
-> number of layers: 4
-> layer size: 32
-> NTK-based adaptive weighting
-> Interior Sampling: 10000
-> Boundary Sampling: 1500
+> optimizer: AdamW \
+> learning rate: $$1e^{-4}$$ \
+> number of layers: 4 \
+> layer size: 32 \
+> NTK-based adaptive weighting \
+> Interior Sampling: 10000 \
+> Boundary Sampling: 1500 \
 > Total Epochs: 80000
 > 
 > Special Sampling method: 80% sampling point allocates at the interface.
