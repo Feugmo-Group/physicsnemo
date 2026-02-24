@@ -59,8 +59,8 @@
 
 # Outputs
 - $$\eta$$
-- $$\varphi^*$$
-- $$c^*_{vac}$$
-- $$c^*_{elec}$$
-- $$c^*_{yzr}$$
-- $$\rho^*$$
+- $$\varphi^* $$
+- $$c^* _{vac}$$
+- $$c^* _{elec}$$
+- $$c^* _{yzr}$$
+- $$\rho^* $$
