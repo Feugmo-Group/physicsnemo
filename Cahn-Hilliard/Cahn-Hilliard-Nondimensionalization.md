@@ -1,12 +1,12 @@
 # Dimensionless Equations
 
-> 1. $$Poisson\ Equation: \frac{\partial^2 \varphi^*}{\partial x^{*2}} = -\lambda \rho^{*} $$
+> 1. $$Poisson\ Equation: \frac{\partial^2 \varphi^*}{\partial x^{*2}} = \frac{-\rho}{\varepsilon_r \varepsilon_0}$$
 > 
-> 2. $$Cahn\ Hilliard:\frac{\partial \eta}{\partial t^*} = M^* \frac{\partial^2 (4\eta(1-\eta)(1 - 2\eta) - k^*\frac{\partial^2 \eta}{\partial x^{*2}})}{\partial x^{*2}}$$
+> 2. $$Cahn\ Hilliard: \frac{\partial \eta}{\partial t^* } = M^* \frac{\partial^2 (4\eta(1-\eta)(1 - 2\eta) - k^*\frac{\partial^2 \eta}{\partial x^{*2}})}{\partial x^{*2}}$$
 > 
-> 3. $$Concentration_i:\frac{\partial c_i^*}{\partial t^*} = \alpha c_i^*\frac{\partial^2 \mu^o_i}{\partial x^{*2}} + \beta\frac{\partial^2 c_i^*}{\partial x^{*2}} + \sigma c_i^*\frac{\partial^2 \varphi^*}{\partial x^{*2}}-R^{3PB}_iK\Lambda_c$$
+> 3. $$Concentration_i:\frac{\partial c_i^* }{\partial t^* } = \alpha c_i^* \frac{\partial^2 \mu^o_i}{\partial x^{* 2}} + \beta\frac{\partial^2 c_i^* }{\partial x^{* 2}} + \sigma c_i^* \frac{\partial^2 \varphi^*}{\partial x^{*2}}-R^{3PB}_iK\Lambda_c$$
 > 
-> 4. $$J_i = -\frac{D_i^*D_{ref}c^*_ic_{ref}}{k_BTL_{ref}}\frac{\partial \mu_i^o}{\partial x^*}-\frac{D^*_iD_{ref}c_{ref}}{L_{ref}}\frac{\partial c^*_i}{\partial x^*} - \frac{D^*_iD_{ref}z_iec^*_ic_{ref}}{k_BT}\frac{\varphi_{ref}}{L_{ref}}\frac{\partial \varphi^*}{\partial x^*}$$
+> 4. $$J_i = -\frac{D_i^* D_{ref}c^* _ i c_{ref}}{k_BTL_{ref}}\frac{\partial \mu_i^o}{\partial x^* }-\frac{D^* _ iD_{ref}c_{ref}}{L_{ref}}\frac{\partial c^* _ i}{\partial x^* } - \frac{D^* _ iD_{ref}z_iec^* _ ic_{ref}}{k_BT}\frac{\varphi_{ref}}{L_{ref}}\frac{\partial \varphi^* }{\partial x^*}$$
 
 
 # Nondimensionalization Parameters
