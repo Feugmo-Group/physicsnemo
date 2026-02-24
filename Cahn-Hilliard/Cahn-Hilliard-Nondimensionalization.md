@@ -13,7 +13,7 @@
 |Original Parameter|Characteristic Value|Nondimensionalization|
 |--------------|--------------------|---------------------|
 |x|$$L_{ref}=2.5e^{-8}$$|$$x^*=\frac{x}{L_{ref}}$$|
-|t|$$t_{ref} = \frac{(L_{ref})^2}{D_{ref}}$$: using $$6e^{-8}$$for now|$$t^*=\frac{t}{t_{ref}}$$|
+|t|$$t_{ref} = \frac{(L_{ref})^2}{D_{ref}}: using\ 6e^{-8} \ for\ now$$|$$t^*=\frac{t}{t_{ref}}$$|
 |$$D_i$$|$$D_{ref}=D_{vac}=1e^{-8}$$|$$D_i^*=\frac{D_i}{D_{ref}}$$|
 |$$c_i$$|$$c_{ref}=1660$$|$$c_i^*=\frac{c_i}{c_{ref}}$$|
 |$$\rho$$|$$\rho_{ref}=1.6e^6$$|$$\rho^*=\frac{\rho}{\rho_{ref}}$$|
@@ -24,8 +24,8 @@
 | | |
 |-|-|
 |$$\lambda$$|$$\frac{\rho_{ref}(L_{ref})^2}{\varphi_{ref}\varepsilon_r \varepsilon_0}$$|
-|$$\alpha_i$$|$$\frac {D^*_iD_{ref}t_{ref}}{k_BT(L_{ref})^2}$$|
-|$$\beta_i$$|$$\frac {D_i^*D_{ref}t_{ref}}{(L_{ref})^2}$$|
+|$$\alpha_i$$|$$\frac {D^* _ iD_{ref}t_{ref}}{k_BT(L_{ref})^2}$$|
+|$$\beta_i$$|$$\frac {D_i^* D_{ref}t_{ref}}{(L_{ref})^2}$$|
 |$$\sigma_i$$|$$\alpha_i \varphi_{ref}e$$|
 
 # Physics Loss
@@ -45,7 +45,7 @@
 |$$J_{elec} = \frac{i_a}{eN_Az_{elec}}$$|$$J_{elec} = 0$$| 
 |$$J_{yzr} = 0$$|$$J_{yzr} = 0$$|
 |$$\varphi^* = 0.927=\frac{0.102}{\varphi_{ref}}$$|$$\varphi_{ref} = 0$$|
-|$$\frac{\partial \varphi^*}{\partial x^*} = 0$$||
+|$$\frac{\partial \varphi^* }{\partial x^* } = 0$$| |
 
 # Initial Condition ($$t^* = 0$$)
 #### $$x^* \in[-1, 1], t^* \in [0, 1]$$
