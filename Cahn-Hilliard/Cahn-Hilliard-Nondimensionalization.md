@@ -1,5 +1,6 @@
 # Dimensionless Equations
-> 1. $$Poisson\ Equation: \frac{\partial^2 \varphi^*}{\partial x^{*2}} = -\lambda \rho^* $$
+
+> 1. $$Poisson\ Equation: \frac{\partial^2 \varphi^*}{\partial x^{*2}} = -\lambda \rho^{*} $$
 > 
 > 2. $$Cahn\ Hilliard:\frac{\partial \eta}{\partial t^*} = M^* \frac{\partial^2 (4\eta(1-\eta)(1 - 2\eta) - k^*\frac{\partial^2 \eta}{\partial x^{*2}})}{\partial x^{*2}}$$
 > 
