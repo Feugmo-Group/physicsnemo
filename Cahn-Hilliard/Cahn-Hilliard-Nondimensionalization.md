@@ -29,11 +29,11 @@
 |$$\sigma_i$$|$$\alpha_i \varphi_{ref}e$$|
 
 # Physics Loss
-> ``Cahn\ Hillard = 0``
-> ``Poisson\ Equation = 0``
-> ``Concentration_{vac} = 0``
-> ``Concentration_{elec} = 0``
-> ``Concentration_{yzr} = 0``
+> $$Cahn\ Hillard = 0$$
+> $$Poisson\ Equation = 0$$
+> $$Concentration_{vac} = 0$$
+> $$Concentration_{elec} = 0$$
+> $$Concentration_{yzr} = 0$$
 
 # Boundary Condition 
 #### $$x^* \in[-1, 1], t^* \in [0, 1]$$
@@ -58,9 +58,9 @@
 |$$c_{yzr} = 0 = \frac{c_{yzr\ bulk\ cathode}}{c_{ref}}$$|$$c_{yzr} = 1 = \frac{c_{yzr\ bulk\ YSZ}}{c_{ref}}$$|
 
 # Outputs
-- ``\eta`` 
-- ``\varphi^*``
-- ``c^*_{vac}``
-- ``c^*_{elec}``
-- ``c^*_{yzr}``
-- ``\rho^*``
+- $$\eta$$
+- $$\varphi^*$$
+- $$c^*_{vac}$$
+- $$c^*_{elec}$$
+- $$c^*_{yzr}$$
+- $$\rho^*$$
