@@ -48,12 +48,12 @@ This model is using PINN(Physics Informed Neural Network) to solve an electroche
 |yzr|-1.0|0.1e|0.0e|$$5.0e^{-20}$$|0|1660.0|$$0$$|
 
 # Outputs
-- ``\eta`` 
-- ``\varphi``
-- ``c_{vac}``
-- ``c_{elec}``
-- ``c_{yzr}``
-- ``\rho``
+- $$\eta$$ 
+- $$\varphi$$
+- $$c_{vac}$$
+- $$c_{elec}$$
+- $$c_{yzr}$$
+- $$\rho$$
 
 # Model Setting
 #### 5 neural network for 5 outputs, $$\rho$$ is calculated using concentration
