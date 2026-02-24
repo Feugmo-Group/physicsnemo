@@ -1,10 +1,5 @@
 from curses.textpad import rectangle
-from pickletools import optimize
 import numpy as np
-from torch import Tensor
-from torch.nn import Module
-from torch import zeros_like as pt_zeros_like
-from physicsnemo.sym.node import Node
 import matplotlib.pyplot as plt
 import sympy
 import torch
@@ -38,14 +33,13 @@ from scipy.constants import elementary_charge, Avogadro, k as Boltzmann
 from geometry.custom_rec import custom_Rectangle
 from geometry.custom_geometry import c_Geometry
 from custom_inferencer import CustomInferencerPlotter
-from eta_custom_inferencer import etaCustomInferencerPlotter
 from physicsnemo.sym.domain.inferencer import PointwiseInferencer
+from eta_custom_inferencer import etaCustomInferencerPlotter
 from physicsnemo.sym.utils.io import (
     csv_to_dict,
     ValidatorPlotter,
     InferencerPlotter,
 )
-
 
 i_a = 0         #-8e6: Applied current density [A/m²]
 e = elementary_charge
@@ -167,7 +161,7 @@ inputs = {
     "y": torch.as_tensor(y_pred_val, dtype=torch.float32),
 }
 
-class PDE_Function1(PDE):
+class PDE_Function(PDE):
     def __init__(self):
         # x_star, y_star
         x = Symbol("x")     # space
@@ -186,10 +180,12 @@ class PDE_Function1(PDE):
         )
 
 @physicsnemo.sym.main(config_path="conf", config_name="config_Adam_eta")
-def run1(cfg: PhysicsNeMoConfig) -> None:
-    pde1 = PDE_Function1()
+def run(cfg: PhysicsNeMoConfig) -> None:
+    pde = PDE_Function()
     nr_layers = 4
+    activation_conc = [Activation.TANH] * (nr_layers - 1) + [Activation.SOFTPLUS]
     activation_eta = [Activation.TANH] * (nr_layers - 1) + [Activation.SIGMOID]
+    activation_phi = [Activation.TANH] * nr_layers
     fcn_cfg = dict(
         layer_size=32,
         nr_layers=4
@@ -201,13 +197,12 @@ def run1(cfg: PhysicsNeMoConfig) -> None:
         activation_fn=activation_eta,
         **fcn_cfg
     )
-    nodes = (pde1.make_nodes() + [FLC_eta.make_node(name="FullyConnected_eta")])
+    nodes = (pde.make_nodes() + [FLC_eta.make_node(name="FullyConnected_eta")])
 
     x, y = Symbol("x"), Symbol("y")
     rec = custom_Rectangle((-1, 0), (1, 1))
 
     PDE_domain = Domain()
-
     loss_ch = PointwiseInteriorConstraint(
         nodes=nodes,
         geometry=rec,
@@ -281,355 +276,8 @@ def run1(cfg: PhysicsNeMoConfig) -> None:
     slv = Solver(cfg, PDE_domain)
     slv.solve()
 
-class PDE_Function(PDE):
-    def __init__(self):
-        # x_star, y_star
-        x = Symbol("x")     # space
-        y = Symbol("y")     # time
-
-        input_variables = {"x": x, "y": y}
-        eta = Function("eta")(*input_variables)
-        phi_star = Function("phi_star")(*input_variables)
-        c_vac_star = Function("c_vac_star")(*input_variables)
-        c_elec_star = Function("c_elec_star")(*input_variables)
-        c_yzr_star = Function("c_yzr_star")(*input_variables)
-
-        self.equations = {}
-        self.equations["flux_vac"] = (
-            - ((d_vac_star * d_ref * c_vac_star * c_ref) / (kB * T * L_ref)) * mu_o_i(vac["mu_cathode"], vac["mu_YSZ"], eta).diff(x, 1) -
-            (d_vac_star * d_ref * c_ref / L_ref) * c_vac_star.diff(x, 1) -
-            (d_vac_star * d_ref * charges["vac"] * e * c_vac_star * c_ref * phi_ref) / (kB * T * L_ref) * phi_star.diff(x, 1)
-        )
-        self.equations["flux_elec"] = (
-            - ((d_elec_star * d_ref * c_elec_star * c_ref) / (kB * T * L_ref)) * mu_o_i(elec["mu_cathode"], elec["mu_YSZ"], eta).diff(x, 1) -
-            (d_elec_star * d_ref * c_ref / L_ref) * c_elec_star.diff(x, 1) -
-            (d_elec_star * d_ref * charges["elec"] * e * c_elec_star * c_ref * phi_ref) / (kB * T * L_ref) * phi_star.diff(x, 1)
-        )
-        self.equations["flux_yzr"] = (
-            - ((d_yzr_star * d_ref * c_yzr_star * c_ref) / (kB * T * L_ref)) * mu_o_i(yzr["mu_cathode"], yzr["mu_YSZ"], eta).diff(x, 1) -
-            (d_yzr_star * d_ref * c_ref / L_ref) * c_yzr_star.diff(x, 1) -
-            (d_yzr_star * d_ref * charges["yzr"] * e * c_yzr_star * c_ref * phi_ref) / (kB * T * L_ref) * phi_star.diff(x, 1)
-        )
-        self.equations["phi_dx"] = (
-            phi_star.diff(x, 1)
-        )
-        #Poisson Eq
-        self.equations["Poisson_eq"] = (
-            phi_star.diff(x, 2) - (-lbd * rho_star(c_vac_star, c_elec_star, c_yzr_star))
-        )
-        # Concentration Eqs
-        self.equations["conc_vac"] = (
-            (c_vac_star.diff(y, 1) -
-            (alp_vac * c_vac_star * mu_o_i(vac["mu_cathode"], vac["mu_YSZ"], eta).diff(x, 2) +
-             bt_vac * c_vac_star.diff(x, 2) +
-             sig_vac * c_vac_star * phi_star.diff(x, 2))
-        ))
-        self.equations["conc_elec"] = (
-            (c_elec_star.diff(y, 1) -
-            (alp_elec * c_elec_star * mu_o_i(elec["mu_cathode"], elec["mu_YSZ"], eta).diff(x, 2) +
-             bt_elec * c_elec_star.diff(x, 2) +
-             sig_elec * c_elec_star * phi_star.diff(x, 2))
-        ))
-        self.equations["conc_yzr"] = (
-            (c_yzr_star.diff(y, 1) -
-            (alp_yzr * c_yzr_star * mu_o_i(yzr["mu_cathode"], yzr["mu_YSZ"], eta).diff(x, 2) +
-             bt_yzr * c_yzr_star.diff(x, 2) +
-             sig_yzr * c_yzr_star * phi_star.diff(x, 2))
-        ))
-
-@physicsnemo.sym.main(config_path="conf", config_name="config_Adam")
-def run2(cfg: PhysicsNeMoConfig) -> None:
-    pde = PDE_Function()
-    nr_layers = 4
-    activation_conc = [Activation.TANH] * (nr_layers - 1) + [Activation.SOFTPLUS]
-    activation_eta = [Activation.TANH] * (nr_layers - 1) + [Activation.SIGMOID]
-    activation_phi = [Activation.TANH] * nr_layers
-    fcn_cfg = dict(
-        layer_size=32,
-        nr_layers=4
-    )
-    FLC_eta = custom_FullyConnectedArch_eta(
-        # y is time
-        input_keys=[Key("x"), Key("y")],
-        output_keys=[Key("eta")],
-        activation_fn=activation_eta,
-        **fcn_cfg
-    )
-    FLC_phi = custom_FullyConnectedArch_phi(
-        # y is time
-        input_keys=[Key("x"), Key("y")],
-        output_keys=[Key("phi_star")],
-        activation_fn=activation_phi,
-        **fcn_cfg,
-    )
-    FLC_c_vac_star = custom_FullyConnectedArch_conc(
-        # y is time
-        input_keys=[Key("x"), Key("y")],
-        output_keys=[Key("c_vac_star")],
-        activation_fn=activation_conc,
-        **fcn_cfg,
-    )
-    FLC_c_elec_star = custom_FullyConnectedArch_conc(
-        # y is time
-        input_keys=[Key("x"), Key("y")],
-        output_keys=[Key("c_elec_star")],
-        activation_fn=activation_conc,
-        **fcn_cfg,
-    )
-    FLC_c_yzr_star = custom_FullyConnectedArch_conc(
-        # y is time
-        input_keys=[Key("x"), Key("y")],
-        output_keys=[Key("c_yzr_star")],
-        activation_fn=activation_conc,
-        **fcn_cfg,
-    )
-
-    nodes = (pde.make_nodes() + [FLC_eta.make_node(name="FullyConnected_eta")] +
-             [FLC_phi.make_node(name="FullyConnected_phi")] +
-             [FLC_c_vac_star.make_node(name="FullyConnected_c_vac")] +
-             [FLC_c_elec_star.make_node(name="FullyConnected_c_elec")] +
-             [FLC_c_yzr_star.make_node(name="FullyConnected_c_yzr")])
-
-    # class EvalMF(Module):
-    #     def __init__(self, net):
-    #         super().__init__()
-    #         self.net = net.eval()
-    #
-    #     def forward(self, in_vars):  # Dict[str, Tensor]) -> Dict[str, Tensor]:
-    #         out = self.net(in_vars)
-    #         return {"eta": out["eta"]}
-    #
-    # evalmf_node = Node(["x", "y"], ["eta"], EvalMF(FLC_eta))
-    # nodes = nodes + [evalmf_node]
-
-    x, y = Symbol("x"), Symbol("y")
-    rec = custom_Rectangle((-1, 0), (1, 1))
-
-    PDE_domain = Domain()
-
-    loss_poisson = PointwiseInteriorConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"Poisson_eq": 0},
-        batch_size=cfg.batch_size.inter,
-    )
-    PDE_domain.add_constraint(loss_poisson, "loss_poisson")
-
-    loss_c_vac_eq = PointwiseInteriorConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"conc_vac": 0},
-        batch_size=cfg.batch_size.inter,
-    )
-    PDE_domain.add_constraint(loss_c_vac_eq, "loss_c_vac_eq")
-
-    loss_c_elec_eq = PointwiseInteriorConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"conc_elec": 0},
-        batch_size=cfg.batch_size.inter,
-    )
-    PDE_domain.add_constraint(loss_c_elec_eq, "loss_c_elec_eq")
-
-    loss_c_yzr_eq = PointwiseInteriorConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"conc_yzr": 0},
-        batch_size=cfg.batch_size.inter,
-    )
-    PDE_domain.add_constraint(loss_c_yzr_eq, "loss_c_yzr_eq")
-
-    boundary_flux_vac_loss_right = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"flux_vac": i_a / (e * NA * charges["vac"])},
-        batch_size=cfg.batch_size.boundary,
-    )
-    PDE_domain.add_constraint(boundary_flux_vac_loss_right, "boundary_flux_vac_loss_right")
-
-    boundary_flux_elec_loss_right = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"flux_elec": 0},
-        batch_size=cfg.batch_size.boundary,
-    )
-    PDE_domain.add_constraint(boundary_flux_elec_loss_right, "boundary_flux_elec_loss_right")
-
-    boundary_flux_yzr_loss_right = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"flux_yzr": 0},
-        batch_size=cfg.batch_size.boundary,
-    )
-    PDE_domain.add_constraint(boundary_flux_yzr_loss_right, "boundary_flux_yzr_loss_right")
-
-    boundary_flux_vac_loss_left = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"flux_vac": 0},
-        batch_size=cfg.batch_size.boundary,
-    )
-    PDE_domain.add_constraint(boundary_flux_vac_loss_left, "boundary_flux_vac_loss_left")
-
-    boundary_flux_elec_loss_left = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"flux_elec": i_a / (e * NA * charges["elec"])},
-        batch_size=cfg.batch_size.boundary,
-    )
-    PDE_domain.add_constraint(boundary_flux_elec_loss_left, "boundary_flux_elec_loss_left")
-
-    boundary_flux_yzr_loss_left = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"flux_yzr": 0},
-        batch_size=cfg.batch_size.boundary,
-    )
-    PDE_domain.add_constraint(boundary_flux_yzr_loss_left, "boundary_flux_yzr_loss_left")
-
-    boundary_phi_loss_left = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"phi_star": 0.927}, # 0.102 / phi_ref
-        batch_size= cfg.batch_size.boundary,
-        criteria=Eq(x, -1)
-    )
-    PDE_domain.add_constraint(boundary_phi_loss_left, "boundary_phi_loss_left")
-
-    boundary_phi_loss_right = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"phi_star": 0},
-        batch_size= cfg.batch_size.boundary,
-        criteria=Eq(x, 1)
-    )
-    PDE_domain.add_constraint(boundary_phi_loss_right, "boundary_phi_loss_right")
-
-    boundary_phi_dx_loss = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"phi_dx": 0},
-        batch_size=cfg.batch_size.boundary,
-        criteria=Eq(x, -1)
-    )
-    PDE_domain.add_constraint(boundary_phi_dx_loss, "boundary_phi_dx_loss")
-
-    initial_phi_loss_left = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"phi_star": 0.927},
-        batch_size= cfg.batch_size.initial,
-        lambda_weighting={"phi_star": 10},
-        criteria=Eq(y, 0) & (x < 0)
-    )
-    PDE_domain.add_constraint(initial_phi_loss_left, "initial_phi_loss_left")
-
-    initial_phi_loss_right = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"phi_star": 0.0},
-        lambda_weighting={"phi_star": 10},
-        batch_size= cfg.batch_size.initial,
-        criteria=Eq(y, 0) & (x > 0)
-    )
-    PDE_domain.add_constraint(initial_phi_loss_right, "initial_phi_loss_right")
-
-    initial_conc_vac_loss_left = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"c_vac_star": c_star(vac["bulk_cathode_conc"])},
-        lambda_weighting={"c_vac_star": 10},
-        batch_size= cfg.batch_size.initial,
-        criteria=Eq(y, 0) & (x < 0)
-    )
-    PDE_domain.add_constraint(initial_conc_vac_loss_left, "initial_conc_vac_loss_left")
-
-    initial_conc_vac_loss_right = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"c_vac_star": c_star(vac["bulk_YSZ_conc"])},
-        lambda_weighting={"c_vac_star": 10},
-        batch_size= cfg.batch_size.initial,
-        criteria=Eq(y, 0) & (x > 0)
-    )
-    PDE_domain.add_constraint(initial_conc_vac_loss_right, "initial_conc_vac_loss_right")
-
-    initial_conc_elec_loss_left = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"c_elec_star": c_star(elec["bulk_cathode_conc"])},
-        lambda_weighting={"c_elec_star": 10},
-        batch_size=cfg.batch_size.initial,
-        criteria=Eq(y, 0) & (x < 0)
-    )
-    PDE_domain.add_constraint(initial_conc_elec_loss_left, "initial_conc_elec_loss_left")
-
-    initial_conc_elec_loss_right = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        outvar={"c_elec_star": c_star(elec["bulk_YSZ_conc"])},
-        lambda_weighting={"c_elec_star": 10},
-        batch_size=cfg.batch_size.initial,
-        fixed_dataset=False,
-        criteria=Eq(y, 0) & (x > 0)
-    )
-    PDE_domain.add_constraint(initial_conc_elec_loss_right, "initial_conc_elec_loss_right")
-
-    initial_conc_yzr_loss_left = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"c_yzr_star": c_star(yzr["bulk_cathode_conc"])},
-        lambda_weighting={"c_yzr_star": 10},
-        batch_size=cfg.batch_size.initial,
-        criteria=Eq(y, 0) & (x < 0)
-    )
-    PDE_domain.add_constraint(initial_conc_yzr_loss_left, "initial_conc_yzr_loss_left")
-
-    initial_conc_yzr_loss_right = PointwiseBoundaryConstraint(
-        nodes=nodes,
-        geometry=rec,
-        fixed_dataset=False,
-        outvar={"c_yzr_star": c_star(yzr["bulk_YSZ_conc"])},
-        lambda_weighting={"c_yzr_star": 10},
-        batch_size=cfg.batch_size.initial,
-        criteria=Eq(y, 0) & (x > 0)
-    )
-    PDE_domain.add_constraint(initial_conc_yzr_loss_right, "initial_conc_yzr_loss_right")
-
-    grid_inference = PointwiseInferencer(
-        nodes=nodes,
-        invar=inputs,
-        output_names=["eta", "phi_star", "c_vac_star", "c_elec_star", "c_yzr_star"],
-        batch_size=1024,
-        plotter=CustomInferencerPlotter(),
-    )
-    PDE_domain.add_inferencer(grid_inference, "inf_data")
-
-    slv = Solver(cfg, PDE_domain)
-    slv.solve()
-
 if __name__ == "__main__":
-    run1()
-    run2()
+    run()
 
 
 
