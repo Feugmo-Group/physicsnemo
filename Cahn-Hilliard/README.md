@@ -35,8 +35,8 @@ This model is using PINN(Physics Informed Neural Network) to solve an electroche
 |$$e(Elementary\ charge)$$|$$1.60217663e^{-19}$$|$$C$$|
 |$$N_A(Avogadro's constant)$$|$$6.02214076e^{23}$$|$$mol^{-1}$$|
 |$$T(Temperature)$$|$$1273$$|$$K$$|
-|$$x_{min}$$|$$-2.5 * e^{-8}/-25$$|$$m/nm$$|
-|$$x_{max}$$|$$2.5 * e^{-8}/25$$|$$m/nm$$|
+|$$x_{min}$$|$$-2.5 e^{-8}/-25$$|$$m/nm$$|
+|$$x_{max}$$|$$2.5  e^{-8}/25$$|$$m/nm$$|
 |$$t(y)$$|$$6e^{-8}/60$$|$$s/ns$$|
 |$$\varepsilon_r$$|40||
 |$$\varepsilon_0$$|$$8.854187817e^{-12}$$|$$Fm^{-1}$$|
