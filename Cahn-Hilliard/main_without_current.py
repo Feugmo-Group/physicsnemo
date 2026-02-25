@@ -16,6 +16,8 @@ from mpl_toolkits.mplot3d import Axes3D
 from scipy.io import loadmat
 from timm.models.hrnet import cfg_cls
 from physicsnemo.sym.models.activation import Activation
+from torch.utils.checkpoint import detach_variable
+
 import config
 from config import register_custom_arch_configs
 from models.custom_fullyconnected_conc import custom_FullyConnectedArch_conc
@@ -384,6 +386,9 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         **fcn_cfg,
     )
 
+    for param in FLC_eta.parameters():
+        param.requires_grad = False
+
     nodes = (pde.make_nodes() + [FLC_eta.make_node(name="FullyConnected_eta")] +
              [FLC_phi.make_node(name="FullyConnected_phi")] +
              [FLC_c_vac_star.make_node(name="FullyConnected_c_vac")] +
@@ -397,9 +402,9 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
     #
     #     def forward(self, in_vars):  # Dict[str, Tensor]) -> Dict[str, Tensor]:
     #         out = self.net(in_vars)
-    #         return {"eta": out["eta"]}
-    #
-    # evalmf_node = Node(["x", "y"], ["eta"], EvalMF(FLC_eta))
+    #         return torch.Tensor.detach(out)
+
+    # evalmf_node = Node(["x", "y"], ["eta"], torch.Tensor.detach(FLC_eta))
     # nodes = nodes + [evalmf_node]
 
     x, y = Symbol("x"), Symbol("y")
@@ -449,6 +454,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         fixed_dataset=False,
         outvar={"flux_vac": i_a / (e * NA * charges["vac"])},
         batch_size=cfg.batch_size.boundary,
+        criteria=Eq(x, 1)
     )
     PDE_domain.add_constraint(boundary_flux_vac_loss_right, "boundary_flux_vac_loss_right")
 
@@ -458,6 +464,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         fixed_dataset=False,
         outvar={"flux_elec": 0},
         batch_size=cfg.batch_size.boundary,
+        criteria=Eq(x, 1)
     )
     PDE_domain.add_constraint(boundary_flux_elec_loss_right, "boundary_flux_elec_loss_right")
 
@@ -467,6 +474,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         fixed_dataset=False,
         outvar={"flux_yzr": 0},
         batch_size=cfg.batch_size.boundary,
+        criteria=Eq(x, 1)
     )
     PDE_domain.add_constraint(boundary_flux_yzr_loss_right, "boundary_flux_yzr_loss_right")
 
@@ -476,6 +484,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         fixed_dataset=False,
         outvar={"flux_vac": 0},
         batch_size=cfg.batch_size.boundary,
+        criteria=Eq(x, -1)
     )
     PDE_domain.add_constraint(boundary_flux_vac_loss_left, "boundary_flux_vac_loss_left")
 
@@ -485,6 +494,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         fixed_dataset=False,
         outvar={"flux_elec": i_a / (e * NA * charges["elec"])},
         batch_size=cfg.batch_size.boundary,
+        criteria=Eq(x, -1)
     )
     PDE_domain.add_constraint(boundary_flux_elec_loss_left, "boundary_flux_elec_loss_left")
 
@@ -494,6 +504,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         fixed_dataset=False,
         outvar={"flux_yzr": 0},
         batch_size=cfg.batch_size.boundary,
+        criteria=Eq(x, -1)
     )
     PDE_domain.add_constraint(boundary_flux_yzr_loss_left, "boundary_flux_yzr_loss_left")
 
@@ -553,7 +564,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         nodes=nodes,
         geometry=rec,
         fixed_dataset=False,
-        outvar={"c_vac_star": c_star(vac["bulk_cathode_conc"])},
+        outvar={"c_vac_star": 0.05},
         lambda_weighting={"c_vac_star": 10},
         batch_size= cfg.batch_size.initial,
         criteria=Eq(y, 0) & (x < 0)
@@ -564,7 +575,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         nodes=nodes,
         geometry=rec,
         fixed_dataset=False,
-        outvar={"c_vac_star": c_star(vac["bulk_YSZ_conc"])},
+        outvar={"c_vac_star": 0.5},
         lambda_weighting={"c_vac_star": 10},
         batch_size= cfg.batch_size.initial,
         criteria=Eq(y, 0) & (x > 0)
@@ -575,7 +586,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         nodes=nodes,
         geometry=rec,
         fixed_dataset=False,
-        outvar={"c_elec_star": c_star(elec["bulk_cathode_conc"])},
+        outvar={"c_elec_star": 0.1},
         lambda_weighting={"c_elec_star": 10},
         batch_size=cfg.batch_size.initial,
         criteria=Eq(y, 0) & (x < 0)
@@ -585,7 +596,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
     initial_conc_elec_loss_right = PointwiseBoundaryConstraint(
         nodes=nodes,
         geometry=rec,
-        outvar={"c_elec_star": c_star(elec["bulk_YSZ_conc"])},
+        outvar={"c_elec_star": 0},
         lambda_weighting={"c_elec_star": 10},
         batch_size=cfg.batch_size.initial,
         fixed_dataset=False,
@@ -597,7 +608,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         nodes=nodes,
         geometry=rec,
         fixed_dataset=False,
-        outvar={"c_yzr_star": c_star(yzr["bulk_cathode_conc"])},
+        outvar={"c_yzr_star": 0},
         lambda_weighting={"c_yzr_star": 10},
         batch_size=cfg.batch_size.initial,
         criteria=Eq(y, 0) & (x < 0)
@@ -608,7 +619,7 @@ def run2(cfg: PhysicsNeMoConfig) -> None:
         nodes=nodes,
         geometry=rec,
         fixed_dataset=False,
-        outvar={"c_yzr_star": c_star(yzr["bulk_YSZ_conc"])},
+        outvar={"c_yzr_star": 1},
         lambda_weighting={"c_yzr_star": 10},
         batch_size=cfg.batch_size.initial,
         criteria=Eq(y, 0) & (x > 0)
