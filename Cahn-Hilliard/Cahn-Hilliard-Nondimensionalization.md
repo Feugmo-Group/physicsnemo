@@ -17,7 +17,7 @@
 |$$D_i$$|$$D_{ref}=D_{vac}=1e^{-8}$$|$$D_i^*=\frac{D_i}{D_{ref}}$$|
 |$$c_i$$|$$c_{ref}=1660$$|$$c_i^*=\frac{c_i}{c_{ref}}$$|
 |$$\rho$$|$$\rho_{ref}=1.6e^6$$|$$\rho^*=\frac{\rho}{\rho_{ref}}$$|
-|$$\varphi$$|$$\varphi_{ref}=\frac{k_B * T}{e}\approx0.11$$|$$\varphi^*=\frac{\varphi}{\varphi_{ref}}$$|
+|$$\varphi$$|$$\varphi_{ref}=\frac{k_B T}{e}\approx0.11$$|$$\varphi^*=\frac{\varphi}{\varphi_{ref}}$$|
 |$$M$$||$$M^* = \frac{Mt_{ref}}{(L_{ref})^2} = 1$$|
 |$$k$$||$$k^* = \frac{k}{L_{ref}} = 4$$|
 
@@ -44,7 +44,7 @@
 |$$J_{vac} = 0$$|$$J_{vac} = \frac{i_a}{eN_Az_{vac}}$$|
 |$$J_{elec} = \frac{i_a}{eN_Az_{elec}}$$|$$J_{elec} = 0$$| 
 |$$J_{yzr} = 0$$|$$J_{yzr} = 0$$|
-|$$\varphi^* = 0.927=\frac{0.102}{\varphi_{ref}}$$|$$\varphi_{ref} = 0$$|
+|$$\varphi^* = 0.927=\frac{0.102}{\varphi_{ref}}$$|$$\varphi = 0$$|
 |$$\frac{\partial \varphi^* }{\partial x^* } = 0$$| |
 
 # Initial Condition ($$t^* = 0$$)
