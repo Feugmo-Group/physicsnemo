@@ -3,7 +3,7 @@
 > $$\frac{\partial \eta}{\partial t^* } = L^* W_0^* \frac{\partial^2 \eta}{\partial r^{* 2}} + \frac{2L^* W_0^* }{r^* }\frac{\partial \eta}{\partial r^* } - L^* \frac{\partial f^* }{\partial \eta}$$
 > 
 > 2. $$Concentration_{Li}:$$
-> $$\frac{\partial c^* }{\partial t^* } = (\frac{D^* c^*}{k_BT}\frac{\partial^2 \mu_i^o}{\partial r^{ * 2}} + \frac{2D^ * c^ * }{r^ * }\frac{\partial \mu_i^o}{\partial r^ * }) + (D^ * \frac{\partial^2 c^* }{\partial r^{ * 2}} + \frac{2D^ *}{r^ *}\frac{\partial c^ * }{\partial r^ * }) + (D^ * c^ * z_{Li}\frac{\partial^2 {\varphi^ * }}{\partial r^ { * 2}} + \frac{2D ^ * z_{Li}c^ * }{r^ * }\frac{\varphi^ * }{\partial r^ * }) - RK\Lambda_c$$
+> $$\frac{\partial c^ * }{\partial t^ * } = (\frac{D^ * c^ * }{k_BT}\frac{\partial^2 \mu_i^o}{\partial r^{ * 2}} + \frac{2D^ * c^ * }{r^ * }\frac{\partial \mu_i^o}{\partial r^ * }) + (D^ * \frac{\partial^2 c^ * }{\partial r^{ * 2}} + \frac{2D^ * }{r^ * }\frac{\partial c^ * }{\partial r^ * }) + (D^ * c^ * z_{Li}\frac{\partial^2 {\varphi^ * }}{\partial r^ { * 2}} + \frac{2D ^ * z_{Li}c^ * }{r^ * }\frac{\varphi^ * }{\partial r^ * }) - RK\Lambda_c$$
 > 
 > 3. Poisson Equation:
 > $$\frac{\partial^2 \varphi^ * }{\partial r^ { * 2}} + \frac{2}{r^ * }\frac{\partial \varphi^ * }{\partial r^ *} = -\lambda\rho^ *$$

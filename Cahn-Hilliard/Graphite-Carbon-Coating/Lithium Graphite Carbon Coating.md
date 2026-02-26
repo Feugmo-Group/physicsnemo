@@ -49,13 +49,13 @@ Solving phase-field model with spherical coordinates (R). Left side is graphite,
  
   | graphite | carbon coating |
   |----------|----------------|
-  |``D:6.4e^{-7}``|``D:1e^{-6}``|
-  |<mark>``\mu_{graphite}:``</mark>|<mark>``\mu_{carbon-coating}:``</mark>|
-  |``conc_{init}:0``|``conc_{init}:0``|
+  |$$D:6.4e^{-7}$$|$$D:1e^{-6}$$|
+  |<mark>$$\mu_{graphite}:$$</mark>|<mark>$$\mu_{carbon-coating}:$$</mark>|
+  |$$conc_{init}:0$$|$$conc_{init}:0$$|
   
   - <mark>$$L(Mobility)：$$</mark>
   - $$charge(z): 1$$
-  - $$ boundary_{carbon\ coating\ conc\ init}:1000\ mol / m^{-3}$$
+  - $$boundary_{carbon\ coating\ conc\ init}:1000\ mol / m^{-3}$$
   - $$rate\_constant(R): \mid \frac{i_a}{e N_A z_{Li}} \mid$$
 
 # Outputs:
@@ -69,4 +69,4 @@ Solving phase-field model with spherical coordinates (R). Left side is graphite,
 - $$concentration_{Li} = 0$$
 - $$Poisson\ Equation = 0$$
 
-### Verify ``i_0: 0.38-0.52\ mA·\ cm^2``
+### Verify $$i_0: 0.38-0.52\ mA·\ cm^2$$
