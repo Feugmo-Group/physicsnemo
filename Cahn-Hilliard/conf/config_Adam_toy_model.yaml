@@ -1,15 +1,13 @@
 defaults:
   - physicsnemo_default
-  - arch:
-    - fully_connected
-  - optimizer: adamw
-  - loss: grad_norm
+  - optimizer: adam
+  - loss: sum
   - scheduler: exponential_lr
   - _self_
 
 
 scheduler:
-  gamma: 0.9998
+  gamma: 1
 
 amp:
   enabled: false
@@ -19,19 +17,19 @@ training:
    rec_monitor_freq: 200
    rec_constraint_freq: 200
    rec_inference_freq: 200
-   max_steps : 180000
+   max_steps : 40000
    ntk:
      use_ntk: False
      save_name: null
-     run_freq: 5
+     run_freq: 10
 
 batch_size:
   boundary: 2000
   initial: 2000
-  inter: 10000
+  interior: 8000
 
 optimizer:
-   lr: 1e-4
+   lr: 1e-3
 
 hydra:
   job:

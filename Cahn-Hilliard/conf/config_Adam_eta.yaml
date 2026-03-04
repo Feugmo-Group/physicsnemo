@@ -3,13 +3,13 @@ defaults:
   - arch:
     - fully_connected
   - optimizer: adamw
-  - loss: grad_norm
+  - loss: sum
   - scheduler: exponential_lr
   - _self_
 
 
 scheduler:
-  gamma: 0.9998
+  gamma: 1
 
 amp:
   enabled: false
@@ -19,15 +19,15 @@ training:
    rec_monitor_freq: 200
    rec_constraint_freq: 200
    rec_inference_freq: 200
-   max_steps : 180000
+   max_steps : 10000
    ntk:
      use_ntk: False
      save_name: null
      run_freq: 5
 
 batch_size:
-  boundary: 2000
-  initial: 2000
+  boundary: 1500
+  initial: 1500
   inter: 10000
 
 optimizer:

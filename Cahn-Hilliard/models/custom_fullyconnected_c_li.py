@@ -15,6 +15,7 @@ from physicsnemo.sym.models.activation import Activation, get_activation_fn
 from physicsnemo.sym.models.arch import Arch
 
 activation_output = [Activation.SIGMOID]
+c_max = 26500
 
 class FullyConnectedArchCore(nn.Module):
     def __init__(
@@ -95,6 +96,7 @@ class FullyConnectedArchCore(nn.Module):
                     x_skip = x
 
         x = self.final_layer(x)
+        x = x * c_max
         return x
 
     def get_weight_list(self):
@@ -107,7 +109,7 @@ class FullyConnectedArchCore(nn.Module):
         return weights, biases
 
 
-class custom_FullyConnectedArch_eta(Arch):
+class custom_FullyConnectedArch_c_li(Arch):
     """Fully Connected Neural Network.
 
     Parameters

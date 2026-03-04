@@ -579,7 +579,7 @@ class c_Geometry:
 
         #
         inner_ranges = {
-            Parameter("x"): (-0.2, 0.2),
+            Parameter("x"): (0.4, 0.6),
             Parameter("y"): (0, 1)
         }
         inner_bounds = Bounds(inner_ranges, parameterization=parameterization)

@@ -14,7 +14,7 @@ from physicsnemo.models.layers import FCLayer, Conv1dFCLayer
 from physicsnemo.sym.models.activation import Activation, get_activation_fn
 from physicsnemo.sym.models.arch import Arch
 
-activation_output = [Activation.SIGMOID]
+activation_output = [Activation.TANH]
 
 class FullyConnectedArchCore(nn.Module):
     def __init__(
@@ -107,7 +107,7 @@ class FullyConnectedArchCore(nn.Module):
         return weights, biases
 
 
-class custom_FullyConnectedArch_eta(Arch):
+class custom_FullyConnectedArch_mu(Arch):
     """Fully Connected Neural Network.
 
     Parameters
