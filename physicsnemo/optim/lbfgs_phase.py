@@ -141,7 +141,7 @@ class TwoPhaseOptimizer:
         for step in range(n_lbfgs_steps):
             lbfgs_step[0] = step
             loss = self.lbfgs.step(_lbfgs_closure)
-            val = float(loss)
+            val = float(loss.detach())
             global_step = n_adam_steps + step
             history.append({"step": global_step, "loss": val, "phase": "lbfgs"})
             if verbose:

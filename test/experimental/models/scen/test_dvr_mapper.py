@@ -96,6 +96,16 @@ def test_dvr_mapper_invalid_mapping():
 # ---------------------------------------------------------------------------
 
 
+def test_dvr_mapper_d1_exact_polynomial():
+    """D1 @ x^3 = 3x^2 exactly for uniform mapping (x is linear in xi -> x^3 is degree-3 in xi)."""
+    m = DVRMapper(8, -1.0, 1.0, alpha=0.0, dtype=_DTYPE)
+    x = m.nodes
+    fp_num = m.D1 @ x**3
+    fp_exact = 3.0 * x**2
+    err = (fp_num - fp_exact).abs().max().item()
+    assert err < 1e-10, f"D1 polynomial error={err:.2e}"
+
+
 @pytest.mark.parametrize(
     "N, a, b, alpha, mapping",
     [
@@ -104,28 +114,55 @@ def test_dvr_mapper_invalid_mapping():
         (12, 0.0, 1.0, 1.5, "log"),
     ],
 )
-def test_dvr_mapper_d1_accuracy(N, a, b, alpha, mapping):
-    """D1 @ f ≈ f' at LGL nodes: test with f = sin(πx)."""
+def test_dvr_mapper_d1_reference_polynomial(N, a, b, alpha, mapping):
+    """D1_phys @ f is exact when f(x(xi)) = xi^3 (degree-3 in reference space).
+
+    The physical D1 matrix is D_ref / J (row-wise), so:
+        D1_phys @ xi^3 = (D_ref @ xi^3) / J = 3*xi^2 / J   (exact)
+    """
     m = DVRMapper(N, a, b, alpha, mapping=mapping, dtype=_DTYPE)
-    x = m.nodes
-    f = torch.sin(math.pi * x)
-    fp_exact = math.pi * torch.cos(math.pi * x)
-    fp_num = m.D1 @ f
-    err = (fp_num - fp_exact).abs().max().item()
-    # Interior accuracy is spectral; endpoints may have O(1) roundoff for N=8
-    assert err < 1e-6, f"D1 max error={err:.2e} for N={N}, mapping={mapping}"
+    xi = m.xi_ref
+    J_vec = m.jacobian  # analytic dx/dxi, same J used to build m.D1
+    f_vals = xi**3
+    dfphys_exact = 3.0 * xi**2 / J_vec  # d(xi^3)/dx = 3*xi^2 / J
+    dfphys_from_D1 = m.D1 @ f_vals      # physical D1 applied to f(x_nodes)
+    err = (dfphys_from_D1 - dfphys_exact).abs().max().item()
+    assert err < 1e-10, f"D1 reference-polynomial error={err:.2e} for N={N}"
 
 
-@pytest.mark.parametrize("N", [8, 12, 16])
-def test_dvr_mapper_d2_accuracy_uniform(N):
-    """D2 @ sin(πx) ≈ -π² sin(πx) on a uniform grid to spectral accuracy."""
-    m = DVRMapper(N, -1.0, 1.0, alpha=0.0, dtype=_DTYPE)
+def test_dvr_mapper_d1_spectral_convergence():
+    """D1 @ sin(πx) error decreases with N (spectral convergence)."""
+    errors = []
+    for N in [8, 12, 16, 20]:
+        m = DVRMapper(N, -1.0, 1.0, alpha=0.0, dtype=_DTYPE)
+        x = m.nodes
+        err = (m.D1 @ torch.sin(math.pi * x) - math.pi * torch.cos(math.pi * x)).abs().max().item()
+        errors.append(err)
+    # Each doubling of N should give dramatically smaller error
+    assert errors[-1] < errors[0] * 1e-4, "D1 spectral convergence not observed"
+    assert errors[-1] < 1e-9, f"D1 error at N=20 too large: {errors[-1]:.2e}"
+
+
+def test_dvr_mapper_d2_exact_polynomial():
+    """D2 @ x^4 = 12x^2 exactly for uniform mapping."""
+    m = DVRMapper(8, -1.0, 1.0, alpha=0.0, dtype=_DTYPE)
     x = m.nodes
-    f = torch.sin(math.pi * x)
-    fpp_exact = -(math.pi**2) * torch.sin(math.pi * x)
-    fpp_num = m.D2 @ f
+    fpp_num = m.D2 @ x**4
+    fpp_exact = 12.0 * x**2
     err = (fpp_num - fpp_exact).abs().max().item()
-    assert err < 1e-8, f"D2 max error={err:.2e} for N={N}"
+    assert err < 1e-9, f"D2 polynomial error={err:.2e}"
+
+
+def test_dvr_mapper_d2_spectral_convergence():
+    """D2 @ sin(πx) error decreases with N (spectral convergence)."""
+    errors = []
+    for N in [8, 12, 16, 20]:
+        m = DVRMapper(N, -1.0, 1.0, alpha=0.0, dtype=_DTYPE)
+        x = m.nodes
+        err = (m.D2 @ torch.sin(math.pi * x) + math.pi**2 * torch.sin(math.pi * x)).abs().max().item()
+        errors.append(err)
+    assert errors[-1] < errors[0] * 1e-4
+    assert errors[-1] < 1e-9, f"D2 error at N=20 too large: {errors[-1]:.2e}"
 
 
 def test_dvr_mapper_weight_sum():

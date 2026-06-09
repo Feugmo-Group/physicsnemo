@@ -156,7 +156,7 @@ def test_legendre_kan_gradients_flow():
 
 def _make_kan_for_regression():
     torch.manual_seed(_SEED)
-    return LegendreKAN(hidden_dim=8, n_layers=2, poly_degree=3, dtype=torch.float32)
+    return LegendreKAN(hidden_dim=8, n_layers=2, poly_degree=3, dtype="float32")
 
 
 def test_legendre_kan_non_regression():

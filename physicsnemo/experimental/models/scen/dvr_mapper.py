@@ -126,6 +126,7 @@ class DVRMapper:
         self._D1 = D1_phys
         self._D2 = D2_phys
         self._D4 = D4_phys
+        self._jacobian = J
 
     @property
     def xi_ref(self) -> torch.Tensor:
@@ -151,6 +152,11 @@ class DVRMapper:
     def D2(self) -> torch.Tensor:
         """Second-derivative matrix ∂²/∂x², shape ``(N, N)``."""
         return self._D2
+
+    @property
+    def jacobian(self) -> torch.Tensor:
+        """Analytic Jacobian dx/dxi at each node, shape ``(N,)``."""
+        return self._jacobian
 
     @property
     def D4(self) -> torch.Tensor:

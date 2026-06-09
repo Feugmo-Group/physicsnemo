@@ -128,15 +128,14 @@ class SCENElementNetwork(physicsnemo.Module):
         n_layers: int = 3,
         backbone: Literal["mlp", "kan"] = "mlp",
         poly_degree: int = 4,
-        dtype: torch.dtype = torch.float32,
-        device=None,
+        dtype: str = "float32",
+        device: str = "cpu",
     ):
         super().__init__(meta=ModelMetaData(func_torch=True))
-        if device is None:
-            device = torch.device("cpu")
+        torch_dtype = getattr(torch, dtype)
+        _device = torch.device(device)
         self.dtype = dtype
-        self._device_arg = str(device)
-        _device = torch.device(device) if not isinstance(device, torch.device) else device
+        # Note: don't store self.device — nn.Module already owns that property
 
         self.element_sizes = [cfg["N"] for cfg in element_configs]
         self._uniform_N = len(set(self.element_sizes)) == 1
@@ -156,7 +155,7 @@ class SCENElementNetwork(physicsnemo.Module):
                 cfg.get("alpha", 0.0),
                 quadrature=cfg.get("quadrature", "lgl"),
                 mapping=cfg.get("mapping", "kte"),
-                dtype=dtype,
+                dtype=torch_dtype,
                 device=_device,
             )
             for cfg in element_configs
@@ -169,7 +168,7 @@ class SCENElementNetwork(physicsnemo.Module):
                 for _ in range(n_layers - 2):
                     layers += [nn.Linear(hidden_dim, hidden_dim), nn.Tanh()]
                 layers.append(nn.Linear(hidden_dim, 1))
-                net = nn.Sequential(*layers).to(dtype=dtype, device=_device)
+                net = nn.Sequential(*layers).to(dtype=torch_dtype, device=_device)
                 for m in net.modules():
                     if isinstance(m, nn.Linear):
                         nn.init.xavier_uniform_(m.weight)
@@ -182,7 +181,7 @@ class SCENElementNetwork(physicsnemo.Module):
                     n_layers=n_layers,
                     poly_degree=poly_degree,
                     dtype=dtype,
-                    device=_device,
+                    device=device,
                 )
         else:
             raise ValueError(f"backbone must be 'mlp' or 'kan', got '{backbone}'")

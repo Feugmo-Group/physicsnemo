@@ -318,20 +318,22 @@ class LegendreKAN(physicsnemo.Module):
         hidden_dim: int = 16,
         n_layers: int = 2,
         poly_degree: int = 4,
-        dtype: torch.dtype = torch.float32,
-        device=None,
+        dtype: str = "float32",
+        device: str = "cpu",
     ):
         super().__init__(meta=ModelMetaData(func_torch=True))
-        if device is None:
-            device = torch.device("cpu")
+        torch_dtype = getattr(torch, dtype)
+        torch_device = torch.device(device)
         self.hidden_dim = hidden_dim
         self.n_layers = n_layers
         self.poly_degree = poly_degree
+        self.dtype = dtype
+        # Note: don't store self.device — nn.Module already owns that property
 
         dims = [1] + [hidden_dim] * (n_layers - 1) + [1]
         self.layers = nn.ModuleList(
             [
-                LegendreKANLayer(dims[i], dims[i + 1], poly_degree, dtype, device)
+                LegendreKANLayer(dims[i], dims[i + 1], poly_degree, torch_dtype, torch_device)
                 for i in range(len(dims) - 1)
             ]
         )
