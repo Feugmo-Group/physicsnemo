@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+defaults:
+  - physics: pnp_2d_unsteady
+  - _self_
+
+model:
+  hidden_dim: 64
+  n_layers: 3
+  backbone: mlp
+  poly_degree: 4
+
+train:
+  n_adam: 3000
+  n_lbfgs: 200
+  adam_lr: 1.0e-3
+  seed: 42
+  dtype: float32
+  t_eval: 0.5      # evaluation time for error reporting
+
+output:
+  dir: outputs/pnp_2d_unsteady
+  checkpoint: scen_pnp_2d.mdlus
+  log_every: 100
+
+wandb:
+  enabled: false
+  project: physicsnemo-electrochemistry
+  entity: null
+  name: pnp_2d_unsteady
+  tags: [pnp, 2d, unsteady, scen]

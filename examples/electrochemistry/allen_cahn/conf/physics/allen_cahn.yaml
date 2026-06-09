@@ -1,0 +1,13 @@
+# Allen-Cahn domain and physics parameters
+domain:
+  a: -1.0
+  b:  1.0
+  n_elements: 2       # elements: [-1, 0] and [0, 1]
+  N_per_element: 16
+  alpha: 0.7          # KTE clustering to resolve interface at x = 0
+  quadrature: lgl
+  mapping: kte
+
+physics:
+  eps_sq: 0.01        # ε² (interface width ~ ε√2 ≈ 0.14 for eps_sq=0.01)
+  lambda_bc: 100.0

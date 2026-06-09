@@ -1,0 +1,22 @@
+# 1D Steady Poisson-Nernst-Planck — domain and physical parameters
+domain:
+  a: -3.0
+  b:  3.0
+  n_elements: 2      # elements: [-3, 0] and [0, 3]
+  N_per_element: 16  # LGL nodes per element
+  alpha: 0.0         # KTE stretching parameter (0 = uniform)
+  quadrature: lgl
+  mapping: kte
+
+physics:
+  # Exact solution: cp = sin(πx)+cos(πx), cn = sin(πx), phi = cos(πx)
+  # BCs at x = ±3:  cp = -1, cn = 0, phi = -1
+  bc_cp_left:  -1.0
+  bc_cp_right: -1.0
+  bc_cn_left:   0.0
+  bc_cn_right:  0.0
+  bc_phi_left: -1.0
+  bc_phi_right: -1.0
+
+  # Loss weights [interior residual, boundary penalty]
+  lambda_bc: 100.0

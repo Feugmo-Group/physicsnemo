@@ -1,0 +1,17 @@
+# 3D steady PNP (KCl electrolyte) — unit cube [0,1]³
+domain:
+  ax: 0.0
+  bx: 1.0
+  Nx: 8
+  ay: 0.0
+  by: 1.0
+  Ny: 8
+  az: 0.0
+  bz: 1.0
+  Nz: 8
+  alpha: 0.0
+  quadrature: lgl
+  mapping: kte
+
+physics:
+  lambda_bc: 50.0

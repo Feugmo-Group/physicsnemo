@@ -1,0 +1,17 @@
+# 2D Kolmogorov flow parameters
+domain:
+  ax: 0.0
+  bx: 6.2832   # 2π
+  Nx: 16
+  alpha_x: 0.0
+  ay: 0.0
+  by: 6.2832   # 2π
+  Ny: 16
+  alpha_y: 0.0
+  quadrature: lgl
+  mapping: kte
+
+physics:
+  nu: 0.1       # kinematic viscosity (Re = 1/ν = 10)
+  n_force: 4    # forcing wavenumber
+  lambda_mean: 10.0  # zero-mean constraint weight

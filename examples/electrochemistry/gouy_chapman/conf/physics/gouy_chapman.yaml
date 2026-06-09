@@ -1,0 +1,14 @@
+# Gouy-Chapman domain and physics parameters
+domain:
+  a: 0.0
+  b: 5.0            # L = 5 Debye lengths
+  n_elements: 1
+  N_per_element: 24
+  alpha: 0.9        # strong KTE clustering at x=0 (wall/Debye layer)
+  quadrature: lgl
+  mapping: kte
+
+physics:
+  psi_wall: 2.0     # dimensionless wall potential (in units of kT/e)
+  kappa: 1.0        # inverse Debye length (domain normalised so κL = 5)
+  lambda_bc: 100.0

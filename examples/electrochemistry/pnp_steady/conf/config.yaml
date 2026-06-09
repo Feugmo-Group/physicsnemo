@@ -1,0 +1,35 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+defaults:
+  - physics: pnp_steady
+  - _self_
+
+model:
+  hidden_dim: 64
+  n_layers: 3
+  backbone: mlp       # "mlp" or "kan"
+  poly_degree: 4      # KAN only
+
+# Two-phase training schedule
+train:
+  n_adam: 2000
+  n_lbfgs: 200
+  adam_lr: 1.0e-3
+  seed: 42
+  dtype: float32      # "float32" or "float64"
+
+# Output
+output:
+  dir: outputs/pnp_steady
+  checkpoint: scen_pnp_steady.mdlus
+  log_every: 100
+
+# Weights & Biases logging (set enabled: true to activate)
+wandb:
+  enabled: false
+  project: physicsnemo-electrochemistry
+  entity: null   # your W&B entity/username, or null for default
+  name: pnp_steady
+  tags: [pnp, steady, scen]

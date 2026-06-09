@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+defaults:
+  - physics: kolmogorov
+  - _self_
+
+model:
+  hidden_dim: 16
+  n_layers: 3
+  backbone: kan      # LegendreKAN backbone — key feature of this example
+  poly_degree: 6
+
+train:
+  n_adam: 3000
+  n_lbfgs: 300
+  adam_lr: 5.0e-4
+  seed: 42
+  dtype: float32
+
+output:
+  dir: outputs/kolmogorov
+  checkpoint: scen_kolmogorov.mdlus
+  log_every: 100
+
+wandb:
+  enabled: false
+  project: physicsnemo-electrochemistry
+  entity: null
+  name: kolmogorov
+  tags: [kolmogorov, navier_stokes, kan, scen]

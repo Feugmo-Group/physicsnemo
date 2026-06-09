@@ -1,0 +1,33 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+defaults:
+  - physics: gouy_chapman
+  - _self_
+
+model:
+  hidden_dim: 64
+  n_layers: 3
+  backbone: mlp
+  poly_degree: 4
+
+train:
+  n_adam: 2000
+  n_lbfgs: 200
+  adam_lr: 1.0e-3
+  seed: 42
+  dtype: float32
+  variant: linear   # "linear" or "nonlinear"
+
+output:
+  dir: outputs/gouy_chapman
+  checkpoint: scen_gouy_chapman.mdlus
+  log_every: 100
+
+wandb:
+  enabled: false
+  project: physicsnemo-electrochemistry
+  entity: null
+  name: gouy_chapman
+  tags: [gouy_chapman, poisson_boltzmann, debye_layer, scen]

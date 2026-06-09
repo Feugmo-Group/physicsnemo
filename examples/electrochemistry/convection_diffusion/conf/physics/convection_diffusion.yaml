@@ -1,0 +1,14 @@
+# Convection-diffusion domain and physics parameters
+domain:
+  a: 0.0
+  b: 1.0
+  n_elements: 1
+  N_per_element: 24
+  alpha: 0.85       # KTE clustering at right wall (boundary layer at x=1)
+  quadrature: lgl
+  mapping: kte
+
+physics:
+  eps: 0.01         # diffusion coefficient ε (boundary layer width ~ε/a)
+  a: 1.0            # convection speed (flow to the right)
+  lambda_bc: 100.0

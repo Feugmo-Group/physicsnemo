@@ -1,0 +1,18 @@
+# 1D unsteady PNP — space-time tensor product grid
+domain:
+  # Spatial domain x ∈ [0, 1]
+  ax: 0.0
+  bx: 1.0
+  Nx: 16           # LGL nodes along x
+  alpha_x: 0.0
+  # Time domain t ∈ [0, 1]
+  at: 0.0
+  bt: 1.0
+  Nt: 12           # LGL nodes along t
+  alpha_t: 0.0
+  quadrature: lgl
+  mapping: kte
+
+physics:
+  lambda_ic: 100.0   # initial condition penalty
+  lambda_bc: 10.0    # Neumann BC penalty (applied at x=0, x=1)

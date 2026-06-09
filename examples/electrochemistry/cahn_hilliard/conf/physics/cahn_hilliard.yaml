@@ -1,0 +1,15 @@
+# Cahn-Hilliard domain and physics parameters
+domain:
+  a: -1.0
+  b:  1.0
+  n_elements: 2
+  N_per_element: 16
+  alpha: 0.0
+  quadrature: lgl
+  mapping: kte
+
+physics:
+  eps_sq: 0.01        # ε² (interfacial width parameter)
+  c_mean: 0.5         # prescribed mean composition
+  lambda_bc: 100.0    # no-flux BC penalty
+  lambda_mass: 100.0  # mass conservation penalty

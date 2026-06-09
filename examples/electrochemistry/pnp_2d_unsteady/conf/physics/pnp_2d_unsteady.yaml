@@ -1,0 +1,19 @@
+# 2D unsteady PNP — DVRMapper2D spatial grid + autograd time derivative
+domain:
+  ax: 0.0
+  bx: 1.0
+  Nx: 12
+  alpha_x: 0.0
+  ay: 0.0
+  by: 1.0
+  Ny: 12
+  alpha_y: 0.0
+  at: 0.0    # time domain start
+  bt: 1.0    # time domain end
+  Nt: 8      # time steps (autograd through time via L-BFGS)
+  quadrature: lgl
+  mapping: kte
+
+physics:
+  lambda_ic: 100.0
+  lambda_bc: 10.0
