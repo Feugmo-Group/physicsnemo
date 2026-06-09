@@ -5,7 +5,7 @@
 """Gouy-Chapman double-layer trainer (linearized & nonlinear Poisson-Boltzmann).
 
 Run:
-    python src/trainer.py                            # linearized
+    python src/trainer.py                            # linearized (default)
     python src/trainer.py train.variant=nonlinear    # nonlinear sinh form
     python src/trainer.py physics.physics.psi_wall=5.0 train.variant=nonlinear
 """
@@ -25,9 +25,15 @@ from omegaconf import DictConfig, OmegaConf
 
 from physicsnemo.experimental.models.scen import SCENElementNetwork
 from physicsnemo.optim import TwoPhaseOptimizer
+from physicsnemo.optim.loss_landscape import loss_landscape_scan, plot_landscape
 
 from src.metrics import compute_errors_linear
-from src.physics import pb_bc_loss, pb_linear_residual, pb_nonlinear_residual
+from src.physics import (
+    interface_loss_list,
+    pb_bc_loss,
+    pb_linear_residual,
+    pb_nonlinear_residual,
+)
 
 
 def _init_wandb(cfg):
@@ -46,11 +52,27 @@ def _init_wandb(cfg):
         return None
 
 
+def _build_element_configs(dom) -> list[dict]:
+    """Build element_configs from either ``dom.elements`` list or legacy single-element keys."""
+    N = int(dom.N_per_element)
+    quad = str(dom.get("quadrature", "lgl"))
+    mapping = str(dom.get("mapping", "kte"))
+    if "elements" in dom:
+        return [
+            {"N": N, "a": float(e.a), "b": float(e.b),
+             "alpha": float(e.alpha), "quadrature": quad, "mapping": mapping}
+            for e in dom.elements
+        ]
+    # legacy single-element config
+    return [{"N": N, "a": float(dom.a), "b": float(dom.b),
+              "alpha": float(dom.alpha), "quadrature": quad, "mapping": mapping}]
+
+
 @hydra.main(config_path="../conf", config_name="config", version_base="1.3")
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     torch.manual_seed(cfg.train.seed)
-    dtype_str = cfg.train.dtype  # "float32" or "float64"
+    dtype_str = cfg.train.dtype
     dtype = torch.float64 if dtype_str == "float64" else torch.float32
 
     dom = cfg.physics.domain
@@ -59,22 +81,30 @@ def main(cfg: DictConfig) -> None:
     kappa = float(phys.kappa)
     kappa_sq = kappa ** 2
     lambda_bc = float(phys.lambda_bc)
+    lambda_int = float(dom.get("lambda_interface", 100.0))
+    interface_cond = str(dom.get("interface_cond", "both"))
     variant = cfg.train.variant
 
-    element_configs = [
-        {"N": dom.N_per_element, "a": float(dom.a), "b": float(dom.b),
-         "alpha": float(dom.alpha), "quadrature": dom.quadrature, "mapping": dom.mapping}
-    ]
+    element_configs = _build_element_configs(dom)
+    K = len(element_configs)
+    L = element_configs[-1]["b"]   # right end of domain
+    print(f"  {K} element(s)  variant={variant}  L={L}  κ={kappa}")
+    if K > 1:
+        print(f"  Interface condition: {interface_cond}  λ_int={lambda_int}")
 
     net = SCENElementNetwork(
         element_configs,
         hidden_dim=cfg.model.hidden_dim, n_layers=cfg.model.n_layers,
-        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype_str,
+        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree,
+        dtype=dtype_str,
     )
-    x = net.mappers[0].nodes
-    D2 = net.D2_global
-    w = net.mappers[0].weights
-    w_norm = w / w.sum()
+
+    D2_global = net.D2_global
+    D1_elems = [net.mappers[k].D1 for k in range(K)]
+    w_norm_global = net.w_norm_global
+    x_global = torch.cat([m.nodes for m in net.mappers])
+    w_global = torch.cat([m.weights for m in net.mappers])
+    sizes = net.element_sizes
 
     residual_fn = pb_linear_residual if variant == "linear" else pb_nonlinear_residual
 
@@ -82,9 +112,19 @@ def main(cfg: DictConfig) -> None:
     lbfgs = torch.optim.LBFGS(net.parameters(), line_search_fn="strong_wolfe", max_iter=20)
     opt = TwoPhaseOptimizer(adam, lbfgs)
 
+    def _split(psi):
+        return list(torch.split(psi, sizes))
+
     def closure():
         psi = net()
-        return residual_fn(psi, D2, w_norm, kappa_sq) + lambda_bc * pb_bc_loss(psi, psi_wall)
+        loss = (
+            residual_fn(psi, D2_global, w_norm_global, kappa_sq)
+            + lambda_bc * pb_bc_loss(psi, psi_wall)
+        )
+        if K > 1:
+            psi_elems = _split(psi)
+            loss = loss + lambda_int * interface_loss_list(psi_elems, D1_elems, interface_cond)
+        return loss
 
     os.makedirs(cfg.output.dir, exist_ok=True)
     wandb_run = _init_wandb(cfg)
@@ -104,12 +144,38 @@ def main(cfg: DictConfig) -> None:
         psi = net()
 
     if variant == "linear":
-        L = float(dom.b) - float(dom.a)
-        errors = compute_errors_linear(psi, x, w, psi_wall, kappa, float(dom.b))
+        errors = compute_errors_linear(psi, x_global, w_global, psi_wall, kappa, L)
         print(f"  L∞ = {errors['Linf']:.3e}   L² = {errors['L2']:.3e}")
 
-    ckpt = os.path.join(cfg.output.dir, cfg.output.checkpoint.replace(".mdlus", f"_{variant}.mdlus"))
+    ckpt = os.path.join(cfg.output.dir,
+                        cfg.output.checkpoint.replace(".mdlus", f"_{variant}.mdlus"))
     net.save(ckpt)
+
+    # ── Loss landscape ─────────────────────────────────────────────────────────
+    print("\n  Computing loss landscape …")
+
+    def _landscape_closure():
+        psi = net()
+        psi_elems = _split(psi)
+        result = {
+            "pde": float(residual_fn(psi, D2_global, w_norm_global, kappa_sq)),
+            "bc":  float(lambda_bc * pb_bc_loss(psi, psi_wall)),
+        }
+        if K > 1:
+            result["interface"] = float(
+                lambda_int * interface_loss_list(psi_elems, D1_elems, interface_cond)
+            )
+        return result
+
+    surfaces = loss_landscape_scan([net], _landscape_closure, nr_steps=24)
+    plot_landscape(
+        surfaces,
+        component_labels={"pde": f"PDE  ψ″ = κ²{'sinh(ψ)' if variant=='nonlinear' else 'ψ'}",
+                          "bc": "BC penalty", "interface": f"Interface ({interface_cond.upper()})"},
+        component_cmaps={"pde": "viridis", "bc": "inferno", "interface": "plasma"},
+        title=f"Gouy-Chapman Loss Landscape ({variant})",
+        save_path=os.path.join(cfg.output.dir, "plots", "loss_landscape.png"),
+    )
 
     if wandb_run is not None:
         import wandb

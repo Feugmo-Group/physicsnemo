@@ -60,3 +60,20 @@ def pb_bc_loss(psi: torch.Tensor, psi_wall: float) -> torch.Tensor:
 def pb_linear_exact(x: torch.Tensor, psi_wall: float, kappa: float, L: float) -> torch.Tensor:
     """Exact solution for linearized PB: ψ₀·sinh(κ(L−x))/sinh(κL)."""
     return psi_wall * torch.sinh(torch.tensor(kappa * (L - x), dtype=x.dtype)) / math.sinh(kappa * L)
+
+
+def interface_loss_list(
+    psi_elems: list[torch.Tensor],
+    D1_elems: list[torch.Tensor],
+    cond: str = "both",
+) -> torch.Tensor:
+    """Sum C0/C1/both continuity losses over all internal element interfaces."""
+    total = torch.zeros(1, dtype=psi_elems[0].dtype, device=psi_elems[0].device).squeeze()
+    for k in range(len(psi_elems) - 1):
+        if cond in ("c0", "both"):
+            total = total + (psi_elems[k][-1] - psi_elems[k + 1][0]) ** 2
+        if cond in ("c1", "both"):
+            dpsi_l = (D1_elems[k] @ psi_elems[k])[-1]
+            dpsi_r = (D1_elems[k + 1] @ psi_elems[k + 1])[0]
+            total = total + (dpsi_l - dpsi_r) ** 2
+    return total
