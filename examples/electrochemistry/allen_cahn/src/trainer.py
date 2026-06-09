@@ -67,7 +67,8 @@ def _build_element_configs(dom) -> list[dict]:
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     torch.manual_seed(cfg.train.seed)
-    dtype = torch.float64 if cfg.train.dtype == "float64" else torch.float32
+    dtype_str = cfg.train.dtype  # "float32" or "float64"
+    dtype = torch.float64 if dtype_str == "float64" else torch.float32
 
     dom = cfg.physics.domain
     element_configs = _build_element_configs(dom)
@@ -80,7 +81,7 @@ def main(cfg: DictConfig) -> None:
         n_layers=cfg.model.n_layers,
         backbone=cfg.model.backbone,
         poly_degree=cfg.model.poly_degree,
-        dtype=dtype,
+        dtype=dtype_str,
     )
 
     x = torch.cat([m.nodes for m in net.mappers])

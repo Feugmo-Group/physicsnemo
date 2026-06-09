@@ -48,7 +48,8 @@ def _init_wandb(cfg):
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     torch.manual_seed(cfg.train.seed)
-    dtype = torch.float64 if cfg.train.dtype == "float64" else torch.float32
+    dtype_str = cfg.train.dtype  # "float32" or "float64"
+    dtype = torch.float64 if dtype_str == "float64" else torch.float32
 
     dom = cfg.physics.domain
     phys = cfg.physics.physics
@@ -57,7 +58,7 @@ def main(cfg: DictConfig) -> None:
         dom.Nx, dom.ax, dom.bx,
         Ny=dom.Ny, ay=dom.ay, by=dom.by,
         Nz=dom.Nz, az=dom.az, bz=dom.bz,
-        alpha=dom.alpha, dtype=dtype,
+        alpha=dom.alpha, dtype=dtype_str,
     )
     xyz = mapper3d.xyz_nodes
     lap = mapper3d.laplacian
@@ -70,7 +71,7 @@ def main(cfg: DictConfig) -> None:
     flat_elem = [{"N": N_total, "a": -1.0, "b": 1.0}]
     model_kw = dict(
         hidden_dim=cfg.model.hidden_dim, n_layers=cfg.model.n_layers,
-        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype,
+        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype_str,
     )
     net_K = SCENElementNetwork(flat_elem, **model_kw)
     net_Cl = SCENElementNetwork(flat_elem, **model_kw)
@@ -89,7 +90,7 @@ def main(cfg: DictConfig) -> None:
             return (((c_K[is_bc] - cK_bc[is_bc])**2 +
                      (c_Cl[is_bc] - cCl_bc[is_bc])**2 +
                      (phi[is_bc] - phi_bc[is_bc])**2).mean())
-        return torch.tensor(0.0, dtype=dtype)
+        return torch.tensor(0.0, dtype=dtype_str)
 
     def closure():
         c_K = net_K()

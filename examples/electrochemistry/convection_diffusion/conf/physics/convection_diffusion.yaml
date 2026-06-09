@@ -3,7 +3,7 @@ domain:
   a: 0.0
   b: 1.0
   n_elements: 1
-  N_per_element: 24
+  N_per_element: 32
   alpha: 0.85       # KTE clustering at right wall (boundary layer at x=1)
   quadrature: lgl
   mapping: kte

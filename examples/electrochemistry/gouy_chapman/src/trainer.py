@@ -50,7 +50,8 @@ def _init_wandb(cfg):
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     torch.manual_seed(cfg.train.seed)
-    dtype = torch.float64 if cfg.train.dtype == "float64" else torch.float32
+    dtype_str = cfg.train.dtype  # "float32" or "float64"
+    dtype = torch.float64 if dtype_str == "float64" else torch.float32
 
     dom = cfg.physics.domain
     phys = cfg.physics.physics
@@ -68,7 +69,7 @@ def main(cfg: DictConfig) -> None:
     net = SCENElementNetwork(
         element_configs,
         hidden_dim=cfg.model.hidden_dim, n_layers=cfg.model.n_layers,
-        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype,
+        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype_str,
     )
     x = net.mappers[0].nodes
     D2 = net.D2_global

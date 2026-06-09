@@ -18,5 +18,6 @@
 
 from physicsnemo.optim.combined_optimizer import CombinedOptimizer
 from physicsnemo.optim.lbfgs_phase import TwoPhaseOptimizer
+from physicsnemo.optim.loss_landscape import loss_landscape_scan, plot_landscape
 
-__all__ = ["CombinedOptimizer", "TwoPhaseOptimizer"]
+__all__ = ["CombinedOptimizer", "TwoPhaseOptimizer", "loss_landscape_scan", "plot_landscape"]

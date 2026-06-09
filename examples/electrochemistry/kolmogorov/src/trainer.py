@@ -53,7 +53,8 @@ def _init_wandb(cfg):
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     torch.manual_seed(cfg.train.seed)
-    dtype = torch.float64 if cfg.train.dtype == "float64" else torch.float32
+    dtype_str = cfg.train.dtype  # "float32" or "float64"
+    dtype = torch.float64 if dtype_str == "float64" else torch.float32
 
     dom = cfg.physics.domain
     phys = cfg.physics.physics
@@ -65,7 +66,7 @@ def main(cfg: DictConfig) -> None:
         dom.Nx, dom.ax, dom.bx,
         Ny=dom.Ny, ay=dom.ay, by=dom.by,
         alpha_x=dom.alpha_x, alpha_y=dom.alpha_y,
-        dtype=dtype,
+        dtype=dtype_str,
     )
     xy = mapper2d.xy_nodes
     D1x, D1y = mapper2d.D1x, mapper2d.D1y
@@ -82,7 +83,7 @@ def main(cfg: DictConfig) -> None:
         n_layers=cfg.model.n_layers,
         backbone=cfg.model.backbone,
         poly_degree=cfg.model.poly_degree,
-        dtype=dtype,
+        dtype=dtype_str,
     )
 
     print(f"\nBackbone: {cfg.model.backbone} (poly_degree={cfg.model.poly_degree})")

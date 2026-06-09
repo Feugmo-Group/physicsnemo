@@ -53,15 +53,16 @@ def _init_wandb(cfg):
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     torch.manual_seed(cfg.train.seed)
-    dtype = torch.float64 if cfg.train.dtype == "float64" else torch.float32
+    dtype_str = cfg.train.dtype  # "float32" or "float64"
+    dtype = torch.float64 if dtype_str == "float64" else torch.float32
 
     dom = cfg.physics.domain
     phys = cfg.physics.physics
 
     # ── Space-time grids ─────────────────────────────────────────────────────
     Nx, Nt = dom.Nx, dom.Nt
-    mapper_x = DVRMapper(Nx, dom.ax, dom.bx, dom.alpha_x, dtype=dtype)
-    mapper_t = DVRMapper(Nt, dom.at, dom.bt, dom.alpha_t, dtype=dtype)
+    mapper_x = DVRMapper(Nx, dom.ax, dom.bx, dom.alpha_x, dtype=dtype_str)
+    mapper_t = DVRMapper(Nt, dom.at, dom.bt, dom.alpha_t, dtype=dtype_str)
 
     x_grid = mapper_x.nodes                     # (Nx,)
     t_grid = mapper_t.nodes                     # (Nt,)
@@ -77,7 +78,7 @@ def main(cfg: DictConfig) -> None:
     flat_element = [{"N": Nx * Nt, "a": -1.0, "b": 1.0}]
     model_kwargs = dict(
         hidden_dim=cfg.model.hidden_dim, n_layers=cfg.model.n_layers,
-        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype,
+        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype_str,
     )
     net_cp = SCENElementNetwork(flat_element, **model_kwargs)
     net_cn = SCENElementNetwork(flat_element, **model_kwargs)

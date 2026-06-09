@@ -52,7 +52,8 @@ def _init_wandb(cfg):
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     torch.manual_seed(cfg.train.seed)
-    dtype = torch.float64 if cfg.train.dtype == "float64" else torch.float32
+    dtype_str = cfg.train.dtype  # "float32" or "float64"
+    dtype = torch.float64 if dtype_str == "float64" else torch.float32
 
     dom = cfg.physics.domain
     phys = cfg.physics.physics
@@ -62,7 +63,7 @@ def main(cfg: DictConfig) -> None:
         dom.Nx, dom.ax, dom.bx,
         Ny=dom.Ny, ay=dom.ay, by=dom.by,
         alpha_x=dom.alpha_x, alpha_y=dom.alpha_y,
-        dtype=dtype,
+        dtype=dtype_str,
     )
     xy = mapper2d.xy_nodes          # (Nx*Ny, 2)
     D1x, D1y = mapper2d.D1x, mapper2d.D1y
@@ -72,7 +73,7 @@ def main(cfg: DictConfig) -> None:
     N_spatial = mapper2d.Nx * mapper2d.Ny
 
     # ── Time grid ────────────────────────────────────────────────────────────
-    mapper_t = DVRMapper(dom.Nt, dom.at, dom.bt, dtype=dtype)
+    mapper_t = DVRMapper(dom.Nt, dom.at, dom.bt, dtype=dtype_str)
     t_grid = mapper_t.nodes         # (Nt,)
     D1t = mapper_t.D1               # (Nt, Nt)
     Nt = dom.Nt
@@ -81,7 +82,7 @@ def main(cfg: DictConfig) -> None:
     flat_elem = [{"N": N_spatial * Nt, "a": -1.0, "b": 1.0}]
     model_kw = dict(
         hidden_dim=cfg.model.hidden_dim, n_layers=cfg.model.n_layers,
-        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype,
+        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype_str,
     )
     net_cp = SCENElementNetwork(flat_elem, **model_kw)
     net_cn = SCENElementNetwork(flat_elem, **model_kw)
@@ -104,7 +105,7 @@ def main(cfg: DictConfig) -> None:
         dcn_dt_2t = D1t @ cn_2t
 
         # Aggregate residual over all time slices
-        total_loss = torch.tensor(0.0, dtype=dtype)
+        total_loss = torch.tensor(0.0, dtype=dtype_str)
         for i, t_val in enumerate(t_grid.tolist()):
             cp_i = cp_2t[i]
             cn_i = cn_2t[i]

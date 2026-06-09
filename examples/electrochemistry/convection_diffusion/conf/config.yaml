@@ -13,11 +13,13 @@ model:
   poly_degree: 4
 
 train:
-  n_adam: 2000
-  n_lbfgs: 200
+  n_pretrain: 1000   # seed network near exact solution before physics loss
+  pretrain_lr: 1.0e-2
+  n_adam: 5000
+  n_lbfgs: 500
   adam_lr: 1.0e-3
   seed: 42
-  dtype: float32
+  dtype: float64
 
 output:
   dir: outputs/convection_diffusion

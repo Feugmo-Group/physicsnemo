@@ -63,7 +63,8 @@ def _build_element_configs(dom) -> list[dict]:
 def main(cfg: DictConfig) -> None:
     print(OmegaConf.to_yaml(cfg))
     torch.manual_seed(cfg.train.seed)
-    dtype = torch.float64 if cfg.train.dtype == "float64" else torch.float32
+    dtype_str = cfg.train.dtype  # "float32" or "float64"
+    dtype = torch.float64 if dtype_str == "float64" else torch.float32
 
     dom = cfg.physics.domain
     phys = cfg.physics.physics
@@ -76,7 +77,7 @@ def main(cfg: DictConfig) -> None:
     net = SCENElementNetwork(
         element_configs,
         hidden_dim=cfg.model.hidden_dim, n_layers=cfg.model.n_layers,
-        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype,
+        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype_str,
     )
     D1, D2, D4 = net.D1_global, net.D2_global, net.D4_global
     w = torch.cat([m.weights for m in net.mappers])
