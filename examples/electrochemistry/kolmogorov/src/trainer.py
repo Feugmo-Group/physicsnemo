@@ -66,7 +66,7 @@ def main(cfg: DictConfig) -> None:
         dom.Nx, dom.ax, dom.bx,
         Ny=dom.Ny, ay=dom.ay, by=dom.by,
         alpha_x=dom.alpha_x, alpha_y=dom.alpha_y,
-        dtype=dtype_str,
+        dtype=dtype,
     )
     xy = mapper2d.xy_nodes
     D1x, D1y = mapper2d.D1x, mapper2d.D1y

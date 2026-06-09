@@ -63,7 +63,7 @@ def main(cfg: DictConfig) -> None:
         dom.Nx, dom.ax, dom.bx,
         Ny=dom.Ny, ay=dom.ay, by=dom.by,
         alpha_x=dom.alpha_x, alpha_y=dom.alpha_y,
-        dtype=dtype_str,
+        dtype=dtype,
     )
     xy = mapper2d.xy_nodes          # (Nx*Ny, 2)
     D1x, D1y = mapper2d.D1x, mapper2d.D1y
@@ -73,7 +73,7 @@ def main(cfg: DictConfig) -> None:
     N_spatial = mapper2d.Nx * mapper2d.Ny
 
     # ── Time grid ────────────────────────────────────────────────────────────
-    mapper_t = DVRMapper(dom.Nt, dom.at, dom.bt, dtype=dtype_str)
+    mapper_t = DVRMapper(dom.Nt, dom.at, dom.bt, dtype=dtype)
     t_grid = mapper_t.nodes         # (Nt,)
     D1t = mapper_t.D1               # (Nt, Nt)
     Nt = dom.Nt
@@ -105,7 +105,7 @@ def main(cfg: DictConfig) -> None:
         dcn_dt_2t = D1t @ cn_2t
 
         # Aggregate residual over all time slices
-        total_loss = torch.tensor(0.0, dtype=dtype_str)
+        total_loss = torch.tensor(0.0, dtype=dtype)
         for i, t_val in enumerate(t_grid.tolist()):
             cp_i = cp_2t[i]
             cn_i = cn_2t[i]

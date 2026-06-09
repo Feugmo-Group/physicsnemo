@@ -58,7 +58,8 @@ def main(cfg: DictConfig) -> None:
         dom.Nx, dom.ax, dom.bx,
         Ny=dom.Ny, ay=dom.ay, by=dom.by,
         Nz=dom.Nz, az=dom.az, bz=dom.bz,
-        alpha=dom.alpha, dtype=dtype_str,
+        alpha_x=dom.alpha, alpha_y=dom.alpha, alpha_z=dom.alpha,
+        dtype=dtype,
     )
     xyz = mapper3d.xyz_nodes
     lap = mapper3d.laplacian
@@ -90,7 +91,7 @@ def main(cfg: DictConfig) -> None:
             return (((c_K[is_bc] - cK_bc[is_bc])**2 +
                      (c_Cl[is_bc] - cCl_bc[is_bc])**2 +
                      (phi[is_bc] - phi_bc[is_bc])**2).mean())
-        return torch.tensor(0.0, dtype=dtype_str)
+        return torch.tensor(0.0, dtype=dtype)
 
     def closure():
         c_K = net_K()

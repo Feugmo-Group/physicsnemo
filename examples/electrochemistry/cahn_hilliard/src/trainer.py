@@ -49,14 +49,19 @@ def _init_wandb(cfg):
 
 
 def _build_element_configs(dom) -> list[dict]:
-    a, b = dom.a, dom.b
-    n = dom.n_elements
-    step = (b - a) / n
-    return [
-        {"N": dom.N_per_element, "a": float(a + i * step), "b": float(a + (i + 1) * step),
-         "alpha": float(dom.alpha), "quadrature": dom.quadrature, "mapping": dom.mapping}
-        for i in range(n)
-    ]
+    N = int(dom.N_per_element)
+    alpha = float(dom.alpha)
+    quad = str(dom.quadrature)
+    mapping = str(dom.mapping)
+    if "boundaries" in dom:
+        bounds = list(dom.boundaries)
+        return [
+            {"N": N, "a": float(bounds[i]), "b": float(bounds[i + 1]),
+             "alpha": alpha, "quadrature": quad, "mapping": mapping}
+            for i in range(len(bounds) - 1)
+        ]
+    return [{"N": N, "a": float(dom.a), "b": float(dom.b),
+             "alpha": alpha, "quadrature": quad, "mapping": mapping}]
 
 
 @hydra.main(config_path="../conf", config_name="config", version_base="1.3")

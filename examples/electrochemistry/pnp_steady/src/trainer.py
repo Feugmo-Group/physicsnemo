@@ -55,21 +55,24 @@ def _init_wandb(cfg: DictConfig) -> "wandb.Run | None":
 
 
 def _build_element_configs(dom: DictConfig) -> list[dict]:
-    """Build element_configs from domain config."""
-    a, b = dom.a, dom.b
-    n = dom.n_elements
-    step = (b - a) / n
-    return [
-        {
-            "N": dom.N_per_element,
-            "a": float(a + i * step),
-            "b": float(a + (i + 1) * step),
-            "alpha": float(dom.alpha),
-            "quadrature": dom.quadrature,
-            "mapping": dom.mapping,
-        }
-        for i in range(n)
-    ]
+    """Build element_configs from domain config.
+
+    Supports either a ``boundaries`` list (e.g. [-3,-2,-1,0,1,2,3]) or
+    legacy single-element ``a``/``b`` keys.
+    """
+    N = int(dom.N_per_element)
+    alpha = float(dom.alpha)
+    quad = str(dom.quadrature)
+    mapping = str(dom.mapping)
+    if "boundaries" in dom:
+        bounds = list(dom.boundaries)
+        return [
+            {"N": N, "a": float(bounds[i]), "b": float(bounds[i + 1]),
+             "alpha": alpha, "quadrature": quad, "mapping": mapping}
+            for i in range(len(bounds) - 1)
+        ]
+    return [{"N": N, "a": float(dom.a), "b": float(dom.b),
+             "alpha": alpha, "quadrature": quad, "mapping": mapping}]
 
 
 @hydra.main(config_path="../conf", config_name="config", version_base="1.3")
@@ -79,8 +82,6 @@ def main(cfg: DictConfig) -> None:
     torch.manual_seed(cfg.train.seed)
     dtype_str = cfg.train.dtype  # "float32" or "float64"
     dtype = torch.float64 if dtype_str == "float64" else torch.float32
-    device = torch.device("cpu")
-
     # ── Domain setup ─────────────────────────────────────────────────────────
     dom = cfg.physics.domain
     element_configs = _build_element_configs(dom)
@@ -92,7 +93,6 @@ def main(cfg: DictConfig) -> None:
         backbone=cfg.model.backbone,
         poly_degree=cfg.model.poly_degree,
         dtype=dtype_str,
-        device=device,
     )
 
     # Three coupled field networks sharing the same geometry

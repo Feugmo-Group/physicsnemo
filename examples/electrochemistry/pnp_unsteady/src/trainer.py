@@ -61,8 +61,8 @@ def main(cfg: DictConfig) -> None:
 
     # ── Space-time grids ─────────────────────────────────────────────────────
     Nx, Nt = dom.Nx, dom.Nt
-    mapper_x = DVRMapper(Nx, dom.ax, dom.bx, dom.alpha_x, dtype=dtype_str)
-    mapper_t = DVRMapper(Nt, dom.at, dom.bt, dom.alpha_t, dtype=dtype_str)
+    mapper_x = DVRMapper(Nx, dom.ax, dom.bx, dom.alpha_x, dtype=dtype)
+    mapper_t = DVRMapper(Nt, dom.at, dom.bt, dom.alpha_t, dtype=dtype)
 
     x_grid = mapper_x.nodes                     # (Nx,)
     t_grid = mapper_t.nodes                     # (Nt,)
