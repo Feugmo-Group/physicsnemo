@@ -13,11 +13,12 @@ model:
   poly_degree: 4
 
 train:
-  n_pretrain: 2000   # seed network near tanh(x/ε√2) before physics loss
-  pretrain_lr: 1.0e-2
-  n_adam: 10000
-  n_lbfgs: 1000
-  adam_lr: 1.0e-3
+  n_pretrain: 15000  # seed network near tanh(x/ε√2) before physics loss
+  pretrain_lr: 5.0e-4
+  n_adam: 0          # skip Adam; go directly to L-BFGS from pretrained state
+  n_lbfgs: 500
+  adam_lr: 1.0e-4
+  grad_clip: 1.0
   seed: 42
   dtype: float64
 

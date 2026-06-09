@@ -82,6 +82,7 @@ class TwoPhaseOptimizer:
         tol: float = 1e-10,
         verbose: bool = False,
         log_every: int = 100,
+        grad_clip: Optional[float] = None,
     ) -> list[dict]:
         """Run two-phase optimization.
 
@@ -101,6 +102,8 @@ class TwoPhaseOptimizer:
             Print loss at each ``log_every`` step.
         log_every : int
             Print interval when verbose=True.
+        grad_clip : float, optional
+            If set, clips gradient L2-norm to this value during Adam phase.
 
         Returns
         -------
@@ -111,10 +114,15 @@ class TwoPhaseOptimizer:
         history: list[dict] = []
 
         # ── Phase 1: Adam ─────────────────────────────────────────────────────
+        params = list(
+            p for group in self.adam.param_groups for p in group["params"]
+        )
         for step in range(n_adam_steps):
             self.adam.zero_grad()
             loss = closure_fn()
             loss.backward()
+            if grad_clip is not None:
+                torch.nn.utils.clip_grad_norm_(params, grad_clip)
             self.adam.step()
             val = loss.item()
             history.append({"step": step, "loss": val, "phase": "adam"})
