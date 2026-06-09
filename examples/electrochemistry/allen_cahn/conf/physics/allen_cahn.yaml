@@ -2,8 +2,7 @@
 domain:
   a: -1.0
   b:  1.0
-  n_elements: 2       # elements: [-1, 0] and [0, 1]
-  N_per_element: 16
+  N_per_element: 48   # needs ~10 nodes in interface width ε√2 ≈ 0.14
   alpha: 0.7          # KTE clustering to resolve interface at x = 0
   quadrature: lgl
   mapping: kte

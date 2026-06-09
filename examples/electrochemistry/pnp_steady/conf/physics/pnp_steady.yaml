@@ -2,7 +2,8 @@
 domain:
   a: -3.0
   b:  3.0
-  n_elements: 2      # elements: [-3, 0] and [0, 3]
+  # Element boundaries: [-3, -2, -1, 0, 1, 2, 3] → 6 uniform elements
+  boundaries: [-3.0, -2.0, -1.0, 0.0, 1.0, 2.0, 3.0]
   N_per_element: 16  # LGL nodes per element
   alpha: 0.0         # KTE stretching parameter (0 = uniform)
   quadrature: lgl
@@ -19,4 +20,6 @@ physics:
   bc_phi_right: -1.0
 
   # Loss weights [interior residual, boundary penalty]
-  lambda_bc: 100.0
+  lambda_bc: 200.0
+  lambda_c0: 10.0    # C0 continuity at element interfaces
+  lambda_c1: 10.0    # C1 flux continuity at element interfaces

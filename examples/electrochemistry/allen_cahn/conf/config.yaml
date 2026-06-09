@@ -13,11 +13,13 @@ model:
   poly_degree: 4
 
 train:
-  n_adam: 2000
-  n_lbfgs: 200
+  n_pretrain: 2000   # seed network near tanh(x/ε√2) before physics loss
+  pretrain_lr: 1.0e-2
+  n_adam: 10000
+  n_lbfgs: 1000
   adam_lr: 1.0e-3
   seed: 42
-  dtype: float32
+  dtype: float64
 
 output:
   dir: outputs/allen_cahn

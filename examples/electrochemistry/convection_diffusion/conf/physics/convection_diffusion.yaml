@@ -1,14 +1,21 @@
 # Convection-diffusion domain and physics parameters
 domain:
-  a: 0.0
-  b: 1.0
-  n_elements: 1
-  N_per_element: 32
-  alpha: 0.85       # KTE clustering at right wall (boundary layer at x=1)
+  # Element boundaries: list of K+1 values defines K elements.
+  # Example: [0.0, 0.05, 1.0] → element 0 covers [0, 0.05], element 1 covers [0.05, 1].
+  # Set to [0.0, 1.0] for a single element.
+  boundaries: [0.0, 1.0]
+  N_per_element: 32          # LGL nodes per element (same for all)
+  alpha: 0.85                # KTE clustering strength (0 = uniform)
   quadrature: lgl
   mapping: kte
+  # Interface continuity condition: c0 | c1 | both
+  #   c0   — solution values match at each shared node (C0 continuity)
+  #   c1   — derivative values match (C1 flux continuity)
+  #   both — enforce both C0 and C1
+  interface_cond: both
+  lambda_interface: 100.0    # penalty weight for interface conditions
 
 physics:
   eps: 0.01         # diffusion coefficient ε (boundary layer width ~ε/a)
-  a: 1.0            # convection speed (flow to the right)
+  a: 1.0            # convection speed
   lambda_bc: 100.0

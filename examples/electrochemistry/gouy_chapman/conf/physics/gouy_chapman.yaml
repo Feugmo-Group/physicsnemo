@@ -1,12 +1,18 @@
-# Gouy-Chapman domain and physics parameters
+# Gouy-Chapman / linearized Poisson-Boltzmann — domain and physics parameters
+#
+# 2 elements: EDL interface [0, 0.5κ⁻¹] with strong KTE clustering (alpha=0.95)
+# and bulk [0.5κ⁻¹, L] uniform (alpha=0.0). Split at 0.5 Debye lengths captures
+# the rapid decay; the bulk element uses uniform spacing since ψ ≈ 0 there.
 domain:
-  a: 0.0
-  b: 5.0            # L = 5 Debye lengths
-  n_elements: 1
-  N_per_element: 24
-  alpha: 0.9        # strong KTE clustering at x=0 (wall/Debye layer)
+  # Element layout: each entry overrides alpha for that element
+  elements:
+    - {a: 0.0, b: 0.5, alpha: 0.95}   # EDL + near-wall decay region
+    - {a: 0.5, b: 5.0, alpha: 0.0}    # bulk (ψ → 0 exponentially)
+  N_per_element: 32
   quadrature: lgl
   mapping: kte
+  interface_cond: both      # C0 + C1 continuity at element boundary
+  lambda_interface: 100.0
 
 physics:
   psi_wall: 2.0     # dimensionless wall potential (in units of kT/e)

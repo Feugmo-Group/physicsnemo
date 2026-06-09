@@ -4,9 +4,17 @@
 
 """Convection-diffusion trainer (boundary layer stiffness test).
 
-Run:
+Run (single element):
     python src/trainer.py
-    python src/trainer.py physics.physics.eps=0.001  # sharper boundary layer
+
+Run (two elements, split at x=0.05 to resolve boundary layer separately):
+    python src/trainer.py 'physics.domain.boundaries=[0.0,0.05,1.0]'
+
+Run (three elements with C0-only interfaces):
+    python src/trainer.py 'physics.domain.boundaries=[0.0,0.03,0.1,1.0]' physics.domain.interface_cond=c0
+
+Run (sharper boundary layer):
+    python src/trainer.py physics.physics.eps=0.001
 """
 
 from __future__ import annotations
@@ -27,7 +35,7 @@ from physicsnemo.optim import TwoPhaseOptimizer
 from physicsnemo.optim.loss_landscape import loss_landscape_scan, plot_landscape
 
 from src.metrics import compute_errors
-from src.physics import cd_bc_loss, cd_exact, cd_residual
+from src.physics import all_interface_losses, cd_bc_loss, cd_exact, cd_residual
 
 
 def _init_wandb(cfg):
@@ -55,32 +63,53 @@ def main(cfg: DictConfig) -> None:
     dom = cfg.physics.domain
     phys = cfg.physics.physics
     eps = float(phys.eps)
-    a = float(phys.a)
+    a_conv = float(phys.a)
     lambda_bc = float(phys.lambda_bc)
+    lambda_int = float(dom.get("lambda_interface", 100.0))
+    interface_cond = str(dom.get("interface_cond", "both"))
 
+    # ── Build element configs from boundary list ───────────────────────────────
+    boundaries = list(dom.boundaries)  # e.g. [0.0, 0.05, 1.0]
+    K = len(boundaries) - 1
     element_configs = [
-        {"N": dom.N_per_element, "a": float(dom.a), "b": float(dom.b),
-         "alpha": float(dom.alpha), "quadrature": dom.quadrature, "mapping": dom.mapping}
+        {
+            "N": int(dom.N_per_element),
+            "a": float(boundaries[k]),
+            "b": float(boundaries[k + 1]),
+            "alpha": float(dom.alpha),
+            "quadrature": str(dom.quadrature),
+            "mapping": str(dom.mapping),
+        }
+        for k in range(K)
     ]
+    print(f"  {K} element(s): {boundaries}")
+    if K > 1:
+        print(f"  Interface condition: {interface_cond}  λ_int={lambda_int}")
 
     net = SCENElementNetwork(
         element_configs,
         hidden_dim=cfg.model.hidden_dim, n_layers=cfg.model.n_layers,
-        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype_str,
+        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree,
+        dtype=dtype_str,
     )
-    x = net.mappers[0].nodes
-    D1, D2 = net.D1_global, net.D2_global
-    w = net.mappers[0].weights
-    w_norm = w / w.sum()
+
+    # Global matrices and per-element helpers
+    D1_global = net.D1_global
+    D2_global = net.D2_global
+    w_norm_global = net.w_norm_global
+    x_global = torch.cat([m.nodes for m in net.mappers])
+    w_global = torch.cat([m.weights for m in net.mappers])
+
+    # Per-element D1 matrices (block diagonal rows)
+    sizes = net.element_sizes
+    D1_elems = [net.mappers[k].D1 for k in range(K)]
 
     # ── Stage 1: pretrain to exact solution shape ─────────────────────────────
-    # Without this, the network collapses to a near-linear ramp that satisfies
-    # the BCs and has near-zero PDE residual, a flat basin Adam cannot escape.
     n_pretrain = int(cfg.train.get("n_pretrain", 0))
     if n_pretrain > 0:
-        print(f"  Pre-training to exact solution shape ({n_pretrain} steps) …")
+        print(f"\n  Pre-training to exact solution shape ({n_pretrain} steps) …")
         with torch.no_grad():
-            u_target = cd_exact(x, eps, a)
+            u_target = cd_exact(x_global, eps, a_conv)
         pre_opt = torch.optim.Adam(net.parameters(), lr=float(cfg.train.pretrain_lr))
         for step in range(n_pretrain):
             pre_opt.zero_grad()
@@ -91,13 +120,24 @@ def main(cfg: DictConfig) -> None:
                 print(f"    pretrain {step:4d}: MSE = {loss_pre.item():.3e}")
         print()
 
+    # ── Stage 2: physics training ──────────────────────────────────────────────
     adam = torch.optim.Adam(net.parameters(), lr=cfg.train.adam_lr)
     lbfgs = torch.optim.LBFGS(net.parameters(), line_search_fn="strong_wolfe", max_iter=20)
     opt = TwoPhaseOptimizer(adam, lbfgs)
 
+    def _split(u):
+        return list(torch.split(u, sizes))
+
     def closure():
         u = net()
-        return cd_residual(u, D1, D2, w_norm, eps, a) + lambda_bc * cd_bc_loss(u)
+        u_elems = _split(u)
+        loss = (
+            cd_residual(u, D1_global, D2_global, w_norm_global, eps, a_conv)
+            + lambda_bc * cd_bc_loss(u)
+        )
+        if K > 1:
+            loss = loss + lambda_int * all_interface_losses(u_elems, D1_elems, interface_cond)
+        return loss
 
     os.makedirs(cfg.output.dir, exist_ok=True)
     wandb_run = _init_wandb(cfg)
@@ -115,7 +155,7 @@ def main(cfg: DictConfig) -> None:
 
     with torch.no_grad():
         u = net()
-    errors = compute_errors(u, x, w, eps, a)
+    errors = compute_errors(u, x_global, w_global, eps, a_conv)
     print(f"  L∞ = {errors['Linf']:.3e}   L² = {errors['L2']:.3e}")
 
     net.save(os.path.join(cfg.output.dir, cfg.output.checkpoint))
@@ -125,16 +165,22 @@ def main(cfg: DictConfig) -> None:
 
     def _landscape_closure():
         u = net()
-        return {
-            "pde": float(cd_residual(u, D1, D2, w_norm, eps, a)),
-            "bc":  float(lambda_bc * cd_bc_loss(u)),
-        }
+        u_elems = _split(u)
+        pde = float(cd_residual(u, D1_global, D2_global, w_norm_global, eps, a_conv))
+        bc = float(lambda_bc * cd_bc_loss(u))
+        result = {"pde": pde, "bc": bc}
+        if K > 1:
+            result["interface"] = float(
+                lambda_int * all_interface_losses(u_elems, D1_elems, interface_cond)
+            )
+        return result
 
     surfaces = loss_landscape_scan([net], _landscape_closure, nr_steps=24)
     plot_landscape(
         surfaces,
-        component_labels={"pde": "PDE residual  εu″+au′=0", "bc": "BC penalty"},
-        component_cmaps={"pde": "viridis", "bc": "inferno"},
+        component_labels={"pde": "PDE residual  εu″+au′=0", "bc": "BC penalty",
+                          "interface": f"Interface ({interface_cond.upper()})"},
+        component_cmaps={"pde": "viridis", "bc": "inferno", "interface": "plasma"},
         title="Convection-Diffusion Loss Landscape",
         save_path=os.path.join(cfg.output.dir, "plots", "loss_landscape.png"),
     )

@@ -13,11 +13,11 @@ model:
   poly_degree: 6
 
 train:
-  n_adam: 3000
-  n_lbfgs: 300
+  n_adam: 10000
+  n_lbfgs: 500
   adam_lr: 5.0e-4
   seed: 42
-  dtype: float32
+  dtype: float64
 
 output:
   dir: outputs/kolmogorov

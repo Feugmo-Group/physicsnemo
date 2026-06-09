@@ -13,11 +13,13 @@ model:
   poly_degree: 4
 
 train:
-  n_adam: 3000
-  n_lbfgs: 300
+  n_pretrain: 5000   # seed c → tanh shape, μ → 0 before physics loss
+  pretrain_lr: 1.0e-2
+  n_adam: 20000
+  n_lbfgs: 1000
   adam_lr: 1.0e-3
   seed: 42
-  dtype: float32
+  dtype: float64
 
 output:
   dir: outputs/cahn_hilliard

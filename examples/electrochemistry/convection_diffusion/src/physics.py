@@ -38,6 +38,55 @@ def cd_bc_loss(u: torch.Tensor) -> torch.Tensor:
     return u[0] ** 2 + (u[-1] - 1.0) ** 2
 
 
+def interface_loss(
+    u_left: torch.Tensor,
+    u_right: torch.Tensor,
+    D1_left: torch.Tensor,
+    D1_right: torch.Tensor,
+    cond: str = "both",
+) -> torch.Tensor:
+    """C0 / C1 / both continuity penalty at a single element interface.
+
+    Parameters
+    ----------
+    u_left  : solution values at the LEFT element's nodes
+    u_right : solution values at the RIGHT element's nodes
+    D1_left : physical D1 matrix for the left element (shape N_L × N_L)
+    D1_right: physical D1 matrix for the right element (shape N_R × N_R)
+    cond    : ``'c0'``, ``'c1'``, or ``'both'``
+
+    Returns
+    -------
+    scalar loss
+    """
+    loss = torch.zeros(1, dtype=u_left.dtype, device=u_left.device).squeeze()
+    if cond in ("c0", "both"):
+        # value continuity: right end of left element == left end of right element
+        loss = loss + (u_left[-1] - u_right[0]) ** 2
+    if cond in ("c1", "both"):
+        # derivative continuity: u'(interface⁻) == u'(interface⁺)
+        du_left = (D1_left @ u_left)[-1]
+        du_right = (D1_right @ u_right)[0]
+        loss = loss + (du_left - du_right) ** 2
+    return loss
+
+
+def all_interface_losses(
+    u_elements: list[torch.Tensor],
+    D1_elements: list[torch.Tensor],
+    cond: str = "both",
+) -> torch.Tensor:
+    """Sum interface losses over all K-1 internal interfaces of K elements."""
+    total = torch.zeros(1, dtype=u_elements[0].dtype, device=u_elements[0].device).squeeze()
+    for k in range(len(u_elements) - 1):
+        total = total + interface_loss(
+            u_elements[k], u_elements[k + 1],
+            D1_elements[k], D1_elements[k + 1],
+            cond=cond,
+        )
+    return total
+
+
 def cd_exact(x: torch.Tensor, eps: float, a: float) -> torch.Tensor:
     """Exact solution: expm1(a·x/ε) / expm1(a/ε)."""
     numer = -torch.expm1(-a * x / eps)

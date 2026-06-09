@@ -2,14 +2,14 @@
 domain:
   a: -1.0
   b:  1.0
-  n_elements: 2
-  N_per_element: 16
-  alpha: 0.0
+  N_per_element: 32
+  alpha: 0.7   # KTE clustering toward both endpoints (resolves interface)
   quadrature: lgl
   mapping: kte
 
 physics:
   eps_sq: 0.01        # ε² (interfacial width parameter)
   c_mean: 0.5         # prescribed mean composition
-  lambda_bc: 100.0    # no-flux BC penalty
+  lambda_bc: 200.0    # Dirichlet c at walls
+  lambda_mu: 50.0     # Neumann μ′=0 at walls
   lambda_mass: 100.0  # mass conservation penalty
