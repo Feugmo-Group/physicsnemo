@@ -59,7 +59,7 @@ def pb_bc_loss(psi: torch.Tensor, psi_wall: float) -> torch.Tensor:
 
 def pb_linear_exact(x: torch.Tensor, psi_wall: float, kappa: float, L: float) -> torch.Tensor:
     """Exact solution for linearized PB: ψ₀·sinh(κ(L−x))/sinh(κL)."""
-    return psi_wall * torch.sinh(torch.tensor(kappa * (L - x), dtype=x.dtype)) / math.sinh(kappa * L)
+    return psi_wall * torch.sinh(kappa * (L - x)) / math.sinh(kappa * L)
 
 
 def interface_loss_list(
