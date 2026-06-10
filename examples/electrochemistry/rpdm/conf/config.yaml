@@ -1,0 +1,32 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+defaults:
+  - optimizer: adam
+  - _self_
+
+model:
+  layer_size: 256
+  nr_layers: 6
+
+optimizer:
+  lr: 1e-3
+
+scheduler:
+  decay_rate: 0.95
+  decay_steps: 2000
+
+training:
+  max_steps: 20000
+  log_freq: 100
+  seed: 0
+
+batch_size:
+  Interior: 2000
+  Left: 500
+  Right: 500
+  Initial: 500
+
+custom:
+  transpassive: false

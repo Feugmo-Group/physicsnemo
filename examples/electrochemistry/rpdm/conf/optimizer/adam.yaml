@@ -1,0 +1,11 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Adam optimizer settings. `lr` is read directly in the trainer; the
+# `_target_` enables `hydra.utils.instantiate(cfg.optimizer, params=...)`
+# if a fully config-driven optimizer is preferred.
+_target_: torch.optim.Adam
+lr: 1e-3
+betas: [0.9, 0.999]
+eps: 1e-8

@@ -1,0 +1,51 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# Refined Point Defect Model (RPDM) — spectral-collocation (NSEM/SCEN)
+# Passive mode, constant external potential (const_0.1_V reference).
+
+domain:
+  # Multi-element spatial mesh on the Landau-transformed coordinate x in [0, 1].
+  # The film potential is near-electroneutral in the bulk and drops sharply in
+  # thin space-charge (Debye) layers at BOTH interfaces, so we refine an element
+  # against each interface and keep a coarse bulk element between them:
+  #   * element 0  [0.0, 0.1]  metal/film layer    — 'log' mapping clusters near x=0
+  #   * element 1  [0.1, 0.9]  bulk film           — uniform
+  #   * element 2  [0.9, 1.0]  film/solution layer — 'kte' clusters near the x=1 end
+  # Add elements (or raise per-element N / alpha) if a layer is still
+  # under-resolved; C0/C1 continuity ties neighbouring elements together.
+  x_elements:
+    - {N: 16, a: 0.0, b: 0.1, alpha: 1.2, mapping: log}
+    - {N: 14, a: 0.1, b: 0.9, alpha: 0.0, mapping: kte}
+    - {N: 16, a: 0.9, b: 1.0, alpha: 0.9, mapping: kte}
+  # Time domain y in [0, yf]
+  Nt: 12           # spectral nodes along time
+  alpha_t: 0.0
+  yf: 1.0          # final dimensionless time (= tc / tc)
+  Eext: 0.1        # [V] constant external potential
+
+model:
+  hidden_dim: 32
+  n_layers: 3
+  backbone: mlp
+  poly_degree: 4
+
+train:
+  n_pretrain: 2000   # IC-shape pretrain steps (essential for this stiff system)
+  pretrain_lr: 1.0e-3
+  n_adam: 5000
+  n_lbfgs: 200
+  lbfgs_max_iter: 20
+  adam_lr: 1.0e-3
+  grad_clip: 1.0
+  lambda_ic: 10.0
+  lambda_interface: 100.0   # weight on C0/C1 element-continuity penalty
+  interface_cond: both      # 'c0', 'c1', or 'both'
+  seed: 42
+  dtype: float64
+
+output:
+  dir: outputs/rpdm_nsem
+  checkpoint: scen_rpdm_nsem.mdlus
+  log_every: 200

@@ -1,0 +1,9 @@
+# SPDX-FileCopyrightText: Copyright (c) 2023 - 2026 NVIDIA CORPORATION & AFFILIATES.
+# SPDX-FileCopyrightText: All rights reserved.
+# SPDX-License-Identifier: Apache-2.0
+
+# MuonAdam: Muon for 2D/4D parameters, Adam for the rest. Optional alternative
+# to adam.yaml (select with `optimizer=muon_adam`). The trainer reads `lr`;
+# `_target_` is provided for fully config-driven instantiation if desired.
+_target_: physicsnemo.optim.MuonAdam
+lr: 1e-3
