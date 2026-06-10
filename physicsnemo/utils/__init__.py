@@ -24,5 +24,6 @@ from .checkpoint import (
     load_model_weights,
     save_checkpoint,
 )
+from .dtype import get_default_dtype, set_default_dtype
 from .logging import LaunchLogger, PythonLogger, RankZeroLoggingWrapper
 from .profiling import Profiler

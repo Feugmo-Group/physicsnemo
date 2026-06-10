@@ -19,5 +19,17 @@
 from physicsnemo.optim.combined_optimizer import CombinedOptimizer
 from physicsnemo.optim.lbfgs_phase import TwoPhaseOptimizer
 from physicsnemo.optim.loss_landscape import loss_landscape_scan, plot_landscape
+from physicsnemo.optim.loss_weighting import BalancedResidualDecayRate
+from physicsnemo.optim.muon_adam import MuonAdam
+from physicsnemo.optim.pytorch_optimizer_wrapper import SOAP, make_pytorch_optimizer
 
-__all__ = ["CombinedOptimizer", "TwoPhaseOptimizer", "loss_landscape_scan", "plot_landscape"]
+__all__ = [
+    "CombinedOptimizer",
+    "TwoPhaseOptimizer",
+    "loss_landscape_scan",
+    "plot_landscape",
+    "BalancedResidualDecayRate",
+    "MuonAdam",
+    "SOAP",
+    "make_pytorch_optimizer",
+]
