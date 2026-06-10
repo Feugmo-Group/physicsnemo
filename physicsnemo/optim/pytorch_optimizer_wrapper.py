@@ -27,40 +27,27 @@ Install it via either of::
     pip install "nvidia-physicsnemo[optim]"
     pip install pytorch_optimizer
 
-All imports are performed lazily inside the factory functions so that this
-module can always be imported (e.g. by an optimizer registry) regardless of
-whether the optional dependency is present.
+The optional dependency is wrapped with :class:`physicsnemo.core.version_check.OptionalImport`
+so that this module can always be imported (e.g. by an optimizer registry)
+regardless of whether the optional dependency is present; an actionable
+``ImportError`` is raised only when an optimizer is actually constructed.
 """
 
 import torch
 
+from physicsnemo.core.version_check import OptionalImport
+
 _INSTALL_HINT = (
-    "The 'pytorch_optimizer' package is required to use this optimizer but is "
-    "not installed. Install it with one of:\n"
+    "The 'pytorch_optimizer' package is required to use this optimizer.\n"
+    "Install it with one of:\n"
     '    pip install "nvidia-physicsnemo[optim]"\n'
     "    pip install pytorch_optimizer"
 )
 
-
-def _import_pytorch_optimizer():
-    r"""Import and return the ``pytorch_optimizer`` module or raise a clear error.
-
-    Returns
-    -------
-    module
-        The imported ``pytorch_optimizer`` module.
-
-    Raises
-    ------
-    ModuleNotFoundError
-        If ``pytorch_optimizer`` is not installed, with an actionable install
-        hint in the message.
-    """
-    try:
-        import pytorch_optimizer  # noqa: PLC0415  (intentional lazy import)
-    except ImportError as exc:  # pragma: no cover - depends on environment
-        raise ModuleNotFoundError(_INSTALL_HINT) from exc
-    return pytorch_optimizer
+# Lazy optional dependency: importing this module never fails. Accessing an
+# attribute of ``_pytorch_optimizer`` raises ImportError with ``_INSTALL_HINT``
+# if the package is absent.
+_pytorch_optimizer = OptionalImport("pytorch_optimizer", package_hint=_INSTALL_HINT)
 
 
 def make_pytorch_optimizer(name: str, params, **kwargs) -> torch.optim.Optimizer:
@@ -84,7 +71,7 @@ def make_pytorch_optimizer(name: str, params, **kwargs) -> torch.optim.Optimizer
 
     Raises
     ------
-    ModuleNotFoundError
+    ImportError
         If ``pytorch_optimizer`` is not installed.
     AttributeError
         If ``name`` does not correspond to an optimizer in the package.
@@ -98,11 +85,14 @@ def make_pytorch_optimizer(name: str, params, **kwargs) -> torch.optim.Optimizer
     >>> model = torch.nn.Linear(4, 4)  # doctest: +SKIP
     >>> opt = make_pytorch_optimizer("SOAP", model.parameters())  # doctest: +SKIP
     """
-    pkg = _import_pytorch_optimizer()
-
-    cls = getattr(pkg, name, None)
+    # Attribute access on the OptionalImport proxy raises ImportError (with the
+    # install hint) when the package is absent; returns None here only when the
+    # package is present but has no exact-case attribute ``name``.
+    cls = getattr(_pytorch_optimizer, name, None)
     if cls is None:
-        # Case-insensitive fallback.
+        import importlib  # noqa: PLC0415
+
+        pkg = importlib.import_module("pytorch_optimizer")
         lowered = name.lower()
         for attr in dir(pkg):
             if attr.lower() == lowered:
@@ -179,7 +169,7 @@ def SOAP(
 
     Raises
     ------
-    ModuleNotFoundError
+    ImportError
         If ``pytorch_optimizer`` is not installed.
 
     Examples

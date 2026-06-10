@@ -63,13 +63,13 @@ def test_make_pytorch_optimizer_builds_soap():
 def test_helpful_error_when_dependency_absent():
     model = torch.nn.Linear(4, 4)
 
-    with pytest.raises(ModuleNotFoundError) as exc_info:
+    with pytest.raises(ImportError) as exc_info:
         SOAP(model.parameters())
     msg = str(exc_info.value)
     assert "pytorch_optimizer" in msg
     assert "pip install" in msg
 
-    with pytest.raises(ModuleNotFoundError):
+    with pytest.raises(ImportError):
         make_pytorch_optimizer("SOAP", model.parameters())
 
 
