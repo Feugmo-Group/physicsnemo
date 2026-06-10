@@ -16,11 +16,22 @@
 
 """Optimizer utilities for PhysicsNeMo."""
 
+from physicsnemo.optim.aggregators import (
+    AGGREGATOR_NAMES,
+    Aggregator,
+    BalancedResidualDecayRate,
+    build_aggregator,
+)
 from physicsnemo.optim.combined_optimizer import CombinedOptimizer
 from physicsnemo.optim.lbfgs_phase import TwoPhaseOptimizer
 from physicsnemo.optim.loss_landscape import loss_landscape_scan, plot_landscape
-from physicsnemo.optim.loss_weighting import BalancedResidualDecayRate
 from physicsnemo.optim.muon_adam import MuonAdam
+from physicsnemo.optim.natural_gradient import (
+    NaturalGradient,
+    SketchedNaturalGradient,
+    compute_gram,
+    compute_gram_functional,
+)
 from physicsnemo.optim.pytorch_optimizer_wrapper import SOAP, make_pytorch_optimizer
 
 __all__ = [
@@ -28,8 +39,15 @@ __all__ = [
     "TwoPhaseOptimizer",
     "loss_landscape_scan",
     "plot_landscape",
+    "AGGREGATOR_NAMES",
+    "Aggregator",
     "BalancedResidualDecayRate",
+    "build_aggregator",
     "MuonAdam",
+    "NaturalGradient",
+    "SketchedNaturalGradient",
+    "compute_gram",
+    "compute_gram_functional",
     "SOAP",
     "make_pytorch_optimizer",
 ]
