@@ -67,7 +67,7 @@ from physicsnemo.mesh.sampling import sample_random_points_on_cells
 from physicsnemo.models.mlp.fully_connected import FullyConnected
 from physicsnemo.optim import build_aggregator
 from physicsnemo.sym.eq.phy_informer import PhysicsInformer
-from physicsnemo.utils import set_default_dtype
+from physicsnemo.utils import save_checkpoint, set_default_dtype
 from physicsnemo.utils.logging import PythonLogger
 
 # Residual term groups and the coordinate set each is evaluated on.
@@ -308,6 +308,7 @@ def main(cfg: DictConfig) -> None:
     log.info("Training complete.")
 
     # film-thickness metric vs COMSOL (L(t) error)
+    final_loss = float(loss.detach())
     try:
         err = film_thickness_error(net, pde, p, device)
         log.info(
@@ -320,6 +321,24 @@ def main(cfg: DictConfig) -> None:
 
     if cfg.validation.enabled:
         _validation_plot(net, pde, p, yf, cfg, device, err, log)
+
+    # Idiomatic PhysicsNeMo checkpoint: field net + optimizer + scheduler, with
+    # the final loss / film-thickness metrics as metadata.  Written into the
+    # example's ``outputs/`` directory (gitignored), not the tracked example root.
+    out_dir = os.path.join(_ROOT, "outputs")
+    os.makedirs(out_dir, exist_ok=True)
+    metadata = {"final_loss": final_loss}
+    if err is not None:
+        metadata.update({"linf": float(err["linf"]), "rel_l2": float(err["rel_l2"])})
+    save_checkpoint(
+        out_dir,
+        models=net,
+        optimizer=optimizer,
+        scheduler=scheduler,
+        epoch=int(cfg.training.max_steps),
+        metadata=metadata,
+    )
+    log.info(f"Saved checkpoint to {out_dir}")
 
 
 def _validation_plot(net, pde, p, yf, cfg, device, err, log) -> None:
@@ -373,7 +392,9 @@ def _validation_plot(net, pde, p, yf, cfg, device, err, log) -> None:
     axes[2].legend()
 
     fig.tight_layout()
-    out_path = os.path.abspath("rpdm_validation.png")
+    out_dir = os.path.join(_ROOT, "outputs")
+    os.makedirs(out_dir, exist_ok=True)
+    out_path = os.path.join(out_dir, "rpdm_validation.png")
     fig.savefig(out_path, dpi=120)
     plt.close(fig)
     log.info(f"Validation figure written to {out_path}")

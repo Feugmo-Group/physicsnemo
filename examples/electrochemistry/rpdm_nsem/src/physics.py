@@ -54,7 +54,10 @@ from __future__ import annotations
 import math
 from dataclasses import dataclass, field
 
+import sympy as sp
 import torch
+
+from physicsnemo.sym.eq.pde import PDE
 
 
 @dataclass
@@ -219,6 +222,139 @@ class NondimGroups:
         )
 
 
+class PointDefectModel(PDE):
+    """Inline SymPy ``PDE`` for the passive RPDM (spectral-collocation port).
+
+    This is the symbolic statement of the same interior + interface residuals
+    that were previously hand-coded in :func:`rpdm_residuals`.  Building it as a
+    :class:`~physicsnemo.sym.eq.pde.PDE` lets us obtain per-equation
+    :class:`~physicsnemo.sym.computation.Computation` objects via
+    :meth:`make_computations`; each is then evaluated on the precomputed-operator
+    derivatives (see :func:`_build_var_dict` / :func:`rpdm_residuals`).
+
+    The constants are injected as SymPy :class:`~sympy.Number` from a
+    :class:`NondimGroups` instance, so the symbolic residuals are numerically
+    identical to the original tensor algebra (verified to float64 round-off by
+    ``tests/test_pde_parity.py``).  ``phiext`` is the *constant* external
+    potential here (the spectral example targets the constant-voltage case), so
+    it enters as a Number rather than a symbolic ``Eext(y)``.
+
+    Equation/leaf conventions (``diff_str == "__"``):
+
+    * Fields ``cCV``, ``cAV``, ``phif`` and the film thickness ``l`` are SymPy
+      ``Function(...)(x, y)``; ``phimf`` is the (detached) interface potential
+      that drives the film-growth ODE.
+    * Spatial derivatives map to ``cCV__x`` (``D1x``), ``cCV__x__x`` (``D2x``);
+      time derivatives to ``cCV__y`` / ``l__y`` (``D1y``).
+    * The bare coordinate symbol ``x`` (Landau convection term) maps to ``"x"``.
+    """
+
+    name = "RPDM"
+
+    def __init__(self, g: NondimGroups):
+        x = sp.Symbol("x")
+        y = sp.Symbol("y")
+        input_variables = {"x": x, "y": y}
+
+        cCV = sp.Function("cCV")(*input_variables.values())
+        cAV = sp.Function("cAV")(*input_variables.values())
+        phif = sp.Function("phif")(*input_variables.values())
+        l = sp.Function("l")(*input_variables.values())  # noqa: E741
+        # phimf = phif at the metal/film interface (x=0); supplied detached.
+        phimf = sp.Function("phimf")(*input_variables.values())
+
+        N = sp.Number
+        eta, zCV, zAV = N(g.eta), N(g.zCV), N(g.zAV)
+        eps = N(g.eps)
+        xiCV, xiAV = N(g.xiCV), N(g.xiAV)
+        nu_mf, nu_fs = N(g.nu_mf), N(g.nu_fs)
+        k0R1_hat, k0R2_hat = N(g.k0R1_hat), N(g.k0R2_hat)
+        k0R3_hat, k0R4_hat = N(g.k0R3_hat), N(g.k0R4_hat)
+        k0R2_hat_fg, kR5_hat = N(g.k0R2_hat_fg), N(g.kR5_hat)
+        eR1, eR2, eR3, eR4 = N(g.eR1), N(g.eR2), N(g.eR3), N(g.eR4)
+        cR1, cR2, cR3, cR4 = N(g.cR1), N(g.cR2), N(g.cR3), N(g.cR4)
+        phiext, phiext_ref = N(g.phiext), N(g.phiext_ref)
+        sl = N(g.sqrt_lmd)
+
+        self.equations = {}
+
+        # ── Interior (full grid) ───────────────────────────────────────────────
+        self.equations["poisson"] = eps * phif.diff(x, 2) / l**2 + (
+            zCV * cCV + zAV * cAV
+        )
+        self.equations["transport_CV"] = (
+            xiCV * cCV.diff(y, 1)
+            - xiCV * x * l.diff(y, 1) * cCV.diff(x, 1) / l
+            - cCV.diff(x, 2) / l**2
+            - eta * zCV * cCV.diff(x, 1) * phif.diff(x, 1) / l**2
+            - eta * zCV * cCV * phif.diff(x, 2) / l**2
+        )
+        self.equations["transport_AV"] = (
+            xiAV * cAV.diff(y, 1)
+            - xiAV * x * l.diff(y, 1) * cAV.diff(x, 1) / l
+            - cAV.diff(x, 2) / l**2
+            - eta * zAV * cAV.diff(x, 1) * phif.diff(x, 1) / l**2
+            - eta * zAV * cAV * phif.diff(x, 2) / l**2
+        )
+
+        # ── Film-growth ODE in time (passive) ──────────────────────────────────
+        self.equations["film_growth"] = sl * (
+            l.diff(y, 1)
+            - k0R2_hat_fg * eR2 * sp.exp(cR2 * (phiext - phimf - phiext_ref))
+            + kR5_hat
+        )
+
+        # ── Metal/film interface (x = 0) ───────────────────────────────────────
+        self.equations["flux_R1"] = sl * (
+            -cCV.diff(x, 1) / l
+            - eta * zCV * cCV * phif.diff(x, 1) / l
+            + k0R1_hat * cCV * eR1 * sp.exp(cR1 * (phiext - phif - phiext_ref))
+        )
+        self.equations["flux_R2"] = sl * (
+            -cAV.diff(x, 1) / l
+            - eta * zAV * cAV * phif.diff(x, 1) / l
+            - k0R2_hat * eR2 * sp.exp(cR2 * (phiext - phif - phiext_ref))
+        )
+        self.equations["mf_phif"] = nu_mf * (phif - phiext) - phif.diff(x, 1) / l
+
+        # ── Film/solution interface (x = 1) ────────────────────────────────────
+        self.equations["flux_R3"] = sl * (
+            -cCV.diff(x, 1) / l
+            - eta * zCV * cCV * phif.diff(x, 1) / l
+            + k0R3_hat * eR3 * sp.exp(cR3 * (phif - phiext_ref))
+        )
+        self.equations["flux_R4"] = sl * (
+            -cAV.diff(x, 1) / l
+            - eta * zAV * cAV * phif.diff(x, 1) / l
+            - k0R4_hat * cAV * eR4 * sp.exp(cR4 * (phif - phiext_ref))
+        )
+        self.equations["fs_phif"] = nu_fs * phif + phif.diff(x, 1) / l
+
+
+def make_computations_by_name(
+    g: NondimGroups, detach_names: list[str] | None = None
+) -> dict[str, "object"]:
+    """Build :class:`PointDefectModel` and return its computations keyed by name.
+
+    Each value is a :class:`~physicsnemo.sym.computation.Computation` whose
+    ``evaluate(var_dict)`` consumes the ``"__"``-named derivative leaves; the
+    required keys are introspectable via ``.inputs`` / ``.derivatives``.
+    ``phimf`` is detached by default so the film-growth ODE treats the interface
+    potential as data (matching the autodiff RPDM example).
+    """
+    if detach_names is None:
+        detach_names = ["phimf"]
+    pde = PointDefectModel(g)
+    return {c.outputs[0]: c for c in pde.make_computations(detach_names=detach_names)}
+
+
+# Residual terms integrated over the full space-time grid vs. those evaluated
+# only on the x=0 / x=1 interface columns (per time slice).
+_INTERIOR_TERMS = ("poisson", "transport_CV", "transport_AV")
+_EDGE0_TERMS = ("flux_R1", "flux_R2", "mf_phif")  # metal/film, column 0
+_EDGE1_TERMS = ("flux_R3", "flux_R4", "fs_phif")  # film/solution, column -1
+
+
 def _dx(field: torch.Tensor, Dx: torch.Tensor) -> torch.Tensor:
     """Spatial derivative of an ``(Nt, Nx)`` field: applied along the x-axis."""
     return field @ Dx.T
@@ -227,6 +363,50 @@ def _dx(field: torch.Tensor, Dx: torch.Tensor) -> torch.Tensor:
 def _dy(field: torch.Tensor, D1y: torch.Tensor) -> torch.Tensor:
     """Time derivative of an ``(Nt, Nx)`` field: applied along the t-axis."""
     return D1y @ field
+
+
+def _build_full_var_dict(
+    cCV: torch.Tensor,
+    cAV: torch.Tensor,
+    phif: torch.Tensor,
+    lvec: torch.Tensor,
+    D1x: torch.Tensor,
+    D2x: torch.Tensor,
+    D1y: torch.Tensor,
+    x_grid: torch.Tensor,
+) -> dict[str, torch.Tensor]:
+    """Map the precomputed-operator derivatives to the ``"__"`` leaf names.
+
+    Every key a :class:`~physicsnemo.sym.computation.Computation` can request
+    (introspectable via ``comp.inputs`` / ``comp.derivatives``) is assembled
+    here on the full ``(Nt, Nx)`` grid, with ``l`` and the bare coordinate ``x``
+    broadcast across the grid:
+
+    * ``cCV__x``  ← ``D1x`` applied along x        (:func:`_dx`)
+    * ``cCV__x__x`` ← ``D2x`` applied along x
+    * ``cCV__y``  ← ``D1y`` applied along t        (:func:`_dy`)
+    * ``l__y``    ← ``D1y @ l(y)``, broadcast over x
+    * ``x``       ← ``x_grid``, broadcast over t   (Landau convection term)
+    """
+    Nt, Nx = cCV.shape
+    lfull = lvec.unsqueeze(1).expand(Nt, Nx)
+    ly_full = (D1y @ lvec).unsqueeze(1).expand(Nt, Nx)
+    return {
+        "cCV": cCV,
+        "cAV": cAV,
+        "phif": phif,
+        "l": lfull,
+        "x": x_grid.unsqueeze(0).expand(Nt, Nx),
+        "cCV__x": _dx(cCV, D1x),
+        "cCV__x__x": _dx(cCV, D2x),
+        "cCV__y": _dy(cCV, D1y),
+        "cAV__x": _dx(cAV, D1x),
+        "cAV__x__x": _dx(cAV, D2x),
+        "cAV__y": _dy(cAV, D1y),
+        "phif__x": _dx(phif, D1x),
+        "phif__x__x": _dx(phif, D2x),
+        "l__y": ly_full,
+    }
 
 
 def rpdm_residuals(
@@ -240,8 +420,14 @@ def rpdm_residuals(
     w_xt: torch.Tensor,
     x_grid: torch.Tensor,
     g: NondimGroups,
+    comps: dict[str, "object"],
 ) -> dict[str, torch.Tensor]:
     """Per-term weighted squared-residual losses for the passive RPDM.
+
+    The residual *expressions* come from :class:`PointDefectModel`'s symbolic
+    equations via :meth:`make_computations`; this function only supplies the
+    precomputed-operator derivatives (the ``"__"`` leaves) and reduces each
+    raw residual to a weighted MSE with the same quadrature as before.
 
     Parameters
     ----------
@@ -252,6 +438,8 @@ def rpdm_residuals(
     w_xt : shape ``(Nt, Nx)`` — outer product of normalised quadrature weights.
     x_grid : shape ``(Nx,)`` — spatial reference nodes.
     g : :class:`NondimGroups`.
+    comps : dict mapping equation name -> :class:`Computation`, as returned by
+        :func:`make_computations_by_name` (i.e. ``PointDefectModel.make_computations``).
 
     Returns
     -------
@@ -260,109 +448,46 @@ def rpdm_residuals(
     full grid; ``film_growth`` over time; interface terms over time on the
     x=0 / x=1 edges.
     """
-    Nt, Nx = cCV.shape
-    eta, zCV, zAV = g.eta, g.zCV, g.zAV
+    full = _build_full_var_dict(cCV, cAV, phif, lvec, D1x, D2x, D1y, x_grid)
 
-    # Broadcast l(y) and l_y(y) over x.
-    ly_vec = D1y @ lvec  # (Nt,)
-    lbc = lvec.unsqueeze(1)  # (Nt, 1)
-    lyb = ly_vec.unsqueeze(1)  # (Nt, 1)
-    x2d = x_grid.unsqueeze(0)  # (1, Nx)
+    # ── Interior residuals on the full (Nt, Nx) grid ──────────────────────────
+    R = {t: comps[t].evaluate(full)[t] for t in _INTERIOR_TERMS}
 
-    # Spatial derivatives.
-    cCV_x = _dx(cCV, D1x)
-    cCV_xx = _dx(cCV, D2x)
-    cAV_x = _dx(cAV, D1x)
-    cAV_xx = _dx(cAV, D2x)
-    phi_x = _dx(phif, D1x)
-    phi_xx = _dx(phif, D2x)
+    # ── Film-growth ODE in time (passive) ─────────────────────────────────────
+    # phimf = phif at the metal/film interface (x = 0), supplied detached-by-name
+    # in the PDE; l__y is the time derivative of the film thickness.
+    R["film_growth"] = comps["film_growth"].evaluate(
+        {"phimf": phif[:, 0], "l__y": D1y @ lvec}
+    )["film_growth"]
 
-    # Time derivatives.
-    cCV_y = _dy(cCV, D1y)
-    cAV_y = _dy(cAV, D1y)
+    # ── Interface residuals on the edge columns (per time slice) ──────────────
+    # Each interface comp needs only the bare field, l, and the first spatial
+    # derivative at that column; slice the already-computed full-grid leaves.
+    def _edge_dict(col: int) -> dict[str, torch.Tensor]:
+        return {
+            "cCV": full["cCV"][:, col],
+            "cAV": full["cAV"][:, col],
+            "phif": full["phif"][:, col],
+            "l": lvec,
+            "cCV__x": full["cCV__x"][:, col],
+            "cAV__x": full["cAV__x"][:, col],
+            "phif__x": full["phif__x"][:, col],
+        }
 
-    l2 = lbc**2
+    e0, e1 = _edge_dict(0), _edge_dict(-1)
+    for t in _EDGE0_TERMS:
+        R[t] = comps[t].evaluate(e0)[t]
+    for t in _EDGE1_TERMS:
+        R[t] = comps[t].evaluate(e1)[t]
 
-    # ── Interior residuals ────────────────────────────────────────────────────
-    R_poisson = g.eps * phi_xx / l2 + (zCV * cCV + zAV * cAV)
-
-    R_tCV = (
-        g.xiCV * cCV_y
-        - g.xiCV * x2d * lyb * cCV_x / lbc
-        - cCV_xx / l2
-        - eta * zCV * cCV_x * phi_x / l2
-        - eta * zCV * cCV * phi_xx / l2
-    )
-    R_tAV = (
-        g.xiAV * cAV_y
-        - g.xiAV * x2d * lyb * cAV_x / lbc
-        - cAV_xx / l2
-        - eta * zAV * cAV_x * phi_x / l2
-        - eta * zAV * cAV * phi_xx / l2
-    )
-
-    # ── Film-growth ODE (passive) ─────────────────────────────────────────────
-    # phimf = phif at the metal/film interface (x = 0). For constant Eext,
-    # phiext - phiext_ref = 0, so the R2 exponential reduces to exp(-cR2*phimf).
-    # ``sqrt_lmd`` is the source's residual weight for the stiff reaction/film
-    # terms (R1-R4, film_growth) whose exponential prefactors span many decades.
-    sl = g.sqrt_lmd
-    phimf = phif[:, 0]  # (Nt,)
-    R_fg = sl * (
-        ly_vec
-        - g.k0R2_hat_fg * g.eR2 * torch.exp(g.cR2 * (g.phiext - phimf - g.phiext_ref))
-        + g.kR5_hat
-    )
-
-    # ── Metal/film interface (x = 0) ──────────────────────────────────────────
-    l0 = lvec  # (Nt,)
-    R_flux_R1 = sl * (
-        -cCV_x[:, 0] / l0
-        - eta * zCV * cCV[:, 0] * phi_x[:, 0] / l0
-        + g.k0R1_hat
-        * cCV[:, 0]
-        * g.eR1
-        * torch.exp(g.cR1 * (g.phiext - phif[:, 0] - g.phiext_ref))
-    )
-    R_flux_R2 = sl * (
-        -cAV_x[:, 0] / l0
-        - eta * zAV * cAV[:, 0] * phi_x[:, 0] / l0
-        - g.k0R2_hat * g.eR2 * torch.exp(g.cR2 * (g.phiext - phif[:, 0] - g.phiext_ref))
-    )
-    R_mf_phif = g.nu_mf * (phif[:, 0] - g.phiext) - phi_x[:, 0] / l0
-
-    # ── Film/solution interface (x = 1) ───────────────────────────────────────
-    R_flux_R3 = sl * (
-        -cCV_x[:, -1] / l0
-        - eta * zCV * cCV[:, -1] * phi_x[:, -1] / l0
-        + g.k0R3_hat * g.eR3 * torch.exp(g.cR3 * (phif[:, -1] - g.phiext_ref))
-    )
-    R_flux_R4 = sl * (
-        -cAV_x[:, -1] / l0
-        - eta * zAV * cAV[:, -1] * phi_x[:, -1] / l0
-        - g.k0R4_hat
-        * cAV[:, -1]
-        * g.eR4
-        * torch.exp(g.cR4 * (phif[:, -1] - g.phiext_ref))
-    )
-    R_fs_phif = g.nu_fs * phif[:, -1] + phi_x[:, -1] / l0
-
-    # ── Aggregate to per-term scalar MSEs ─────────────────────────────────────
+    # ── Aggregate to per-term scalar MSEs (same weighting/quadrature) ─────────
     wt = w_xt[:, 0]  # time-only normalised weights, (Nt,)
     wt = wt / wt.sum()
 
-    return {
-        "poisson": (w_xt * R_poisson**2).sum(),
-        "transport_CV": (w_xt * R_tCV**2).sum(),
-        "transport_AV": (w_xt * R_tAV**2).sum(),
-        "film_growth": (wt * R_fg**2).sum(),
-        "flux_R1": (wt * R_flux_R1**2).sum(),
-        "flux_R2": (wt * R_flux_R2**2).sum(),
-        "mf_phif": (wt * R_mf_phif**2).sum(),
-        "flux_R3": (wt * R_flux_R3**2).sum(),
-        "flux_R4": (wt * R_flux_R4**2).sum(),
-        "fs_phif": (wt * R_fs_phif**2).sum(),
-    }
+    out = {t: (w_xt * R[t] ** 2).sum() for t in _INTERIOR_TERMS}
+    for t in ("film_growth", *_EDGE0_TERMS, *_EDGE1_TERMS):
+        out[t] = (wt * R[t] ** 2).sum()
+    return out
 
 
 def rpdm_interface_loss(

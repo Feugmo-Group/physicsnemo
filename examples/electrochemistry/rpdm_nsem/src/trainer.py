@@ -49,6 +49,7 @@ from src.metrics import compute_film_metrics  # noqa: E402
 from src.physics import (  # noqa: E402
     NondimGroups,
     Parameters,
+    make_computations_by_name,
     rpdm_ic_loss,
     rpdm_interface_loss,
     rpdm_residuals,
@@ -62,7 +63,7 @@ from physicsnemo.optim import (  # noqa: E402
     TwoPhaseOptimizer,
     build_aggregator,
 )
-from physicsnemo.utils import set_default_dtype  # noqa: E402
+from physicsnemo.utils import save_checkpoint, set_default_dtype  # noqa: E402
 from physicsnemo.utils.logging import PythonLogger  # noqa: E402
 
 
@@ -85,6 +86,10 @@ def main(cfg: DictConfig) -> None:
         f"Nondim groups: eps={g.eps:.3e} eta={g.eta:.3e} xiCV={g.xiCV:.3e} "
         f"k0R2_hat_fg={g.k0R2_hat_fg:.3e} kR5_hat={g.kR5_hat:.3e} lini={g.lini:.3e}"
     )
+
+    # Symbolic RPDM equations -> per-equation Computations evaluated on the
+    # precomputed-operator derivatives (see physics.rpdm_residuals).
+    comps = make_computations_by_name(g)
 
     # ── Space-time spectral grids ─────────────────────────────────────────────
     # Multi-element spatial mesh on x in [0, 1].  The film potential is near
@@ -230,7 +235,9 @@ def main(cfg: DictConfig) -> None:
 
     def closure() -> torch.Tensor:
         cCV, cAV, phi, lvec = fields()
-        terms = rpdm_residuals(cCV, cAV, phi, lvec, D1x, D2x, D1y, w_xt, x_grid, g)
+        terms = rpdm_residuals(
+            cCV, cAV, phi, lvec, D1x, D2x, D1y, w_xt, x_grid, g, comps
+        )
         terms["ic"] = lambda_ic * rpdm_ic_loss(cCV, cAV, phi, lvec, x_grid, g)
         if has_interface:
             terms["interface"] = lambda_int * rpdm_interface_loss(
@@ -256,7 +263,9 @@ def main(cfg: DictConfig) -> None:
     # ── Evaluation ────────────────────────────────────────────────────────────
     with torch.no_grad():
         cCV, cAV, phi, lvec = fields()
-        terms = rpdm_residuals(cCV, cAV, phi, lvec, D1x, D2x, D1y, w_xt, x_grid, g)
+        terms = rpdm_residuals(
+            cCV, cAV, phi, lvec, D1x, D2x, D1y, w_xt, x_grid, g, comps
+        )
         for name, val in terms.items():
             logger.info(f"  residual[{name}] = {float(val):.3e}")
         if has_interface:
@@ -269,12 +278,8 @@ def main(cfg: DictConfig) -> None:
     for k, v in metrics.items():
         logger.info(f"  {k}: {v:.3e}")
 
-    for name, net in [
-        ("cCV", net_cCV),
-        ("cAV", net_cAV),
-        ("phif", net_phi),
-        ("l", net_l),
-    ]:
+    field_nets = [net_cCV, net_cAV, net_phi, net_l]
+    for name, net in zip(["cCV", "cAV", "phif", "l"], field_nets):
         net.save(
             os.path.join(
                 cfg.output.dir,
@@ -282,7 +287,21 @@ def main(cfg: DictConfig) -> None:
             )
         )
 
-    return {"final_loss": history[-1]["loss"], **metrics}
+    # Idiomatic PhysicsNeMo checkpoint: all four field nets + optimizer + final
+    # loss/metrics metadata, written into the run's output directory.
+    final_loss = float(history[-1]["loss"])
+    save_checkpoint(
+        cfg.output.dir,
+        models=field_nets,
+        optimizer=adam,
+        epoch=int(cfg.train.n_adam),
+        metadata={
+            "final_loss": final_loss,
+            **{k: float(v) for k, v in metrics.items()},
+        },
+    )
+
+    return {"final_loss": final_loss, **metrics}
 
 
 if __name__ == "__main__":
