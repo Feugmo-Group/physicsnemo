@@ -10,6 +10,12 @@ model:
   layer_size: 256
   nr_layers: 6
 
+# structured-grid resolution for physicsnemo.mesh sampling over the
+# space-time rectangle x in [0, 1], y in [0, yf].
+mesh:
+  n_x: 64
+  n_y: 64
+
 optimizer:
   lr: 1e-3
 
@@ -30,3 +36,9 @@ batch_size:
 
 custom:
   transpassive: false
+
+# final validation / inference block (meshgrid evaluation + figure)
+validation:
+  enabled: true
+  n_x: 128
+  n_y: 128

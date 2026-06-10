@@ -19,11 +19,18 @@
 Explicit PyTorch training loop:
     * one ``FullyConnected`` net maps (x, y) -> 4 starred fields,
     * a hard-BC layer enforces initial/boundary Dirichlet conditions exactly,
+    * geometry / sampling use ``physicsnemo.mesh``: a structured grid over the
+      space-time rectangle x in [0, 1], y in [0, yf]; interior points come from
+      ``sample_random_points_on_cells`` on the grid, boundary points from its
+      boundary mesh, then split by edge with coordinate masks (left x=0,
+      right x=1, initial y=0),
     * ``PhysicsInformer`` (autodiff) evaluates the residual groups on
       interior / left (x=0) / right (x=1) coordinate batches,
     * per-term squared residual losses are aggregated with ``BalancedResidualDecayRate``
       (BRDR) adaptive weighting,
-    * Adam + ExponentialLR.
+    * Adam + ExponentialLR,
+    * a final validation block evaluates the trained fields on a meshgrid, saves
+      a matplotlib figure, and reports the film-thickness error vs COMSOL.
 
 Run from the example root:
 
@@ -43,14 +50,22 @@ if _ROOT not in sys.path:
 from dataclasses import asdict
 
 import hydra
+import matplotlib.pyplot as plt
+import numpy as np
 import torch
 from omegaconf import DictConfig
 from src.hard_bc import enforce_hard_bc
+from src.metrics import film_thickness_error
 from src.physics import Parameters, PointDefectModel, make_Eext
 from torch.optim import Adam, lr_scheduler
 
+from physicsnemo.distributed import DistributedManager
+from physicsnemo.mesh.primitives.planar.structured_grid import (
+    load as load_structured_grid,
+)
+from physicsnemo.mesh.sampling import sample_random_points_on_cells
 from physicsnemo.models.mlp.fully_connected import FullyConnected
-from physicsnemo.optim import BalancedResidualDecayRate
+from physicsnemo.optim import build_aggregator
 from physicsnemo.sym.eq.phy_informer import PhysicsInformer
 from physicsnemo.utils import set_default_dtype
 from physicsnemo.utils.logging import PythonLogger
@@ -66,13 +81,95 @@ ALL_TERMS = INTERIOR_TERMS + LEFT_TERMS + RIGHT_TERMS
 DETACH_NAMES = ["phimf"]
 
 
-def _sample_coords(n: int, x_lo: float, x_hi: float, yf: float, device) -> torch.Tensor:
-    """Uniform coordinate batch on [x_lo, x_hi] x [0, yf], requires_grad."""
-    x = torch.rand(n, 1, device=device) * (x_hi - x_lo) + x_lo
-    y = torch.rand(n, 1, device=device) * yf
-    coords = torch.cat([x, y], dim=1)
+def _coords_from_xy(x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+    """Stack flat x/y tensors into a [N, 2] requires_grad coordinate batch."""
+    coords = torch.stack([x.reshape(-1), y.reshape(-1)], dim=1)
     coords.requires_grad_(True)
     return coords
+
+
+class RectGeometry:
+    """Space-time rectangle [0, 1] x [0, yf] sampled via ``physicsnemo.mesh``.
+
+    A structured grid supplies interior points; its boundary mesh supplies edge
+    points, which are split into the three RPDM edges the physics needs:
+
+        * ``left``     -- metal/film interface, x = 0,
+        * ``right``    -- film/solution interface, x = 1,
+        * ``initial``  -- initial condition, y = 0.
+
+    The fourth boundary edge (y = yf) carries no residual term and is dropped.
+    Mirrors the ``load_structured_grid`` / ``sample_random_points_on_cells``
+    approach used by ``examples/cfd/ldc_pinns/train.py``, mapped onto the RPDM
+    space-time rectangle.
+    """
+
+    def __init__(self, yf: float, n_x: int, n_y: int, device, eps: float = 1e-6):
+        self.x_min, self.x_max = 0.0, 1.0
+        self.y_min, self.y_max = 0.0, yf
+        self.device = device
+        self.eps = eps
+        self.interior_mesh = load_structured_grid(
+            x_min=self.x_min,
+            x_max=self.x_max,
+            y_min=self.y_min,
+            y_max=self.y_max,
+            n_x=n_x,
+            n_y=n_y,
+            device=device,
+        )
+        self.boundary_mesh = self.interior_mesh.get_boundary_mesh()
+
+    def sample_interior(self, n_points: int):
+        """Interior coords plus an analytical SDF (distance to rectangle edges)."""
+        idx = torch.randint(
+            0, self.interior_mesh.n_cells, (n_points,), device=self.device
+        )
+        pts = sample_random_points_on_cells(self.interior_mesh, idx)
+        x, y = pts[:, 0], pts[:, 1]
+        sdf = torch.min(
+            torch.stack(
+                [x - self.x_min, self.x_max - x, y - self.y_min, self.y_max - y],
+                dim=-1,
+            ),
+            dim=-1,
+        ).values
+        coords = _coords_from_xy(x, y)
+        return coords, sdf.reshape(-1, 1)
+
+    def _sample_boundary_points(self, n_points: int):
+        idx = torch.randint(
+            0, self.boundary_mesh.n_cells, (n_points,), device=self.device
+        )
+        pts = sample_random_points_on_cells(self.boundary_mesh, idx)
+        return pts[:, 0], pts[:, 1]
+
+    def sample_boundary(self, n_left: int, n_right: int, n_initial: int):
+        """Return left (x=0), right (x=1) and initial (y=0) coordinate batches.
+
+        The boundary mesh is sampled densely and split by coordinate masks (the
+        same ``< eps`` / ``> 1 - eps`` style ldc_pinns uses for its top-wall
+        mask); we then take up to the requested number of points from each edge.
+        """
+        # oversample so each edge has enough candidates after masking
+        n_total = 4 * max(n_left, n_right, n_initial) + 16
+        x, y = self._sample_boundary_points(n_total)
+
+        mask_left = x < self.x_min + self.eps
+        mask_right = x > self.x_max - self.eps
+        mask_initial = y < self.y_min + self.eps
+
+        def take(mask, n):
+            xx, yy = x[mask], y[mask]
+            if xx.numel() >= n:
+                xx, yy = xx[:n], yy[:n]
+            return _coords_from_xy(xx, yy)
+
+        return (
+            take(mask_left, n_left),
+            take(mask_right, n_right),
+            take(mask_initial, n_initial),
+        )
 
 
 def _eval_fields(net, coords, pde):
@@ -102,7 +199,10 @@ def main(cfg: DictConfig) -> None:
     set_default_dtype(torch.float64)
     torch.manual_seed(cfg.training.seed)
 
-    device = "cuda" if torch.cuda.is_available() else "cpu"
+    DistributedManager.initialize()  # Only call this once in the entire script!
+    dist = DistributedManager()
+    device = dist.device
+
     log = PythonLogger(name="rpdm")
     log.file_logging()
 
@@ -116,7 +216,10 @@ def main(cfg: DictConfig) -> None:
     pde = PointDefectModel(Eext=Eext, yf=yf, transpassive=transpassive, **asdict(p))
 
     log.info(f"RPDM passive-mode PINN | yf={yf} | phic={pde.phic:.4f} V")
-    log.info(f"Residual terms: {ALL_TERMS}")
+    log.info(f"Device: {device} | Residual terms: {ALL_TERMS}")
+
+    # geometry / sampling on the space-time rectangle via physicsnemo.mesh
+    geom = RectGeometry(yf=yf, n_x=cfg.mesh.n_x, n_y=cfg.mesh.n_y, device=device)
 
     # network: (x, y) -> 4 starred fields
     net = FullyConnected(
@@ -137,7 +240,12 @@ def main(cfg: DictConfig) -> None:
     )
 
     # BRDR adaptive weighting over all residual terms
-    brdr = BalancedResidualDecayRate(num_losses=len(ALL_TERMS)).to(device)
+    brdr = build_aggregator(
+        "brdr",
+        net.parameters(),
+        num_losses=len(ALL_TERMS),
+        weights=[1.0] * len(ALL_TERMS),
+    ).to(device)
     brdr.train()
 
     optimizer = Adam(net.parameters(), lr=cfg.optimizer.lr)
@@ -150,43 +258,47 @@ def main(cfg: DictConfig) -> None:
     n_int = cfg.batch_size.Interior
     n_left = cfg.batch_size.Left
     n_right = cfg.batch_size.Right
+    n_initial = cfg.batch_size.Initial
 
     for step in range(cfg.training.max_steps):
         optimizer.zero_grad()
 
         per_term = {}
 
-        # interior residuals
-        coords_i = _sample_coords(n_int, 0.0, 1.0, yf, device)
+        # interior residuals (SDF-weighted, mirroring ldc_pinns)
+        coords_i, sdf_i = geom.sample_interior(n_int)
         fields_i = _eval_fields(net, coords_i, pde)
         res_i = pi.forward({**fields_i, "coordinates": coords_i})
         for t in INTERIOR_TERMS:
-            per_term[t] = (res_i[t] ** 2).mean()
+            per_term[t] = ((res_i[t] * sdf_i) ** 2).mean()
+
+        # boundary edges: left (x=0), right (x=1), initial (y=0)
+        coords_l, coords_r, _coords_init = geom.sample_boundary(
+            n_left, n_right, n_initial
+        )
 
         # left boundary x=0 residuals
-        coords_l = _sample_coords(n_left, 0.0, 0.0, yf, device)
         fields_l = _eval_fields(net, coords_l, pde)
         res_l = pi.forward({**fields_l, "coordinates": coords_l})
         for t in LEFT_TERMS:
             per_term[t] = (res_l[t] ** 2).mean()
 
         # right boundary x=1 residuals
-        coords_r = _sample_coords(n_right, 1.0, 1.0, yf, device)
         fields_r = _eval_fields(net, coords_r, pde)
         res_r = pi.forward({**fields_r, "coordinates": coords_r})
         for t in RIGHT_TERMS:
             per_term[t] = (res_r[t] ** 2).mean()
 
-        # aggregate with BRDR (1D tensor in ALL_TERMS order)
-        loss_vec = torch.stack([per_term[t] for t in ALL_TERMS])
-        loss = brdr(loss_vec)
+        # aggregate with BRDR (dict in ALL_TERMS order, passing the step index)
+        losses_dict = {t: per_term[t] for t in ALL_TERMS}
+        loss = brdr(losses_dict, step)
 
         loss.backward()
         optimizer.step()
         scheduler.step()
 
         if step % cfg.training.log_freq == 0 or step == cfg.training.max_steps - 1:
-            raw_sum = float(loss_vec.sum().detach())
+            raw_sum = float(sum(per_term[t] for t in ALL_TERMS).detach())
             log.info(
                 f"step {step:6d} | brdr_loss={loss.item():.6e} "
                 f"| raw_sum={raw_sum:.6e} "
@@ -194,6 +306,77 @@ def main(cfg: DictConfig) -> None:
             )
 
     log.info("Training complete.")
+
+    # film-thickness metric vs COMSOL (L(t) error)
+    try:
+        err = film_thickness_error(net, pde, p, device)
+        log.info(
+            f"Film thickness vs COMSOL | L_inf={err['linf']:.3e} m "
+            f"| rel_L2={err['rel_l2']:.3e}"
+        )
+    except FileNotFoundError:
+        err = None
+        log.info("Film thickness metric skipped (COMSOL CSV not found).")
+
+    if cfg.validation.enabled:
+        _validation_plot(net, pde, p, yf, cfg, device, err, log)
+
+
+def _validation_plot(net, pde, p, yf, cfg, device, err, log) -> None:
+    """Evaluate trained fields on a meshgrid and save a figure (ldc_pinns style)."""
+    n_x, n_y = cfg.validation.n_x, cfg.validation.n_y
+    x = np.linspace(0.0, 1.0, n_x)
+    y = np.linspace(0.0, yf, n_y)
+    xx, yy = np.meshgrid(x, y, indexing="xy")
+    xt = torch.as_tensor(
+        xx.reshape(-1, 1), dtype=torch.get_default_dtype(), device=device
+    )
+    yt = torch.as_tensor(
+        yy.reshape(-1, 1), dtype=torch.get_default_dtype(), device=device
+    )
+    coords = torch.cat([xt, yt], dim=1)
+
+    raw = net(coords)
+    starred = {
+        "cCV_star": raw[:, 0:1],
+        "cAV_star": raw[:, 1:2],
+        "phif_star": raw[:, 2:3],
+        "l_star": raw[:, 3:4],
+    }
+    fields = enforce_hard_bc(xt, yt, starred, pde.phif_initial_fn, pde.lini)
+    phif = fields["phif"].detach().cpu().numpy().reshape(n_y, n_x)
+    lfield = fields["l"].detach().cpu().numpy().reshape(n_y, n_x)
+
+    fig, axes = plt.subplots(1, 3, figsize=(13, 4))
+
+    im = axes[0].imshow(phif, origin="lower", aspect="auto", extent=[0.0, 1.0, 0.0, yf])
+    fig.colorbar(im, ax=axes[0])
+    axes[0].set_title("film potential phif(x, y)")
+    axes[0].set_xlabel("x (Landau)")
+    axes[0].set_ylabel("y (time)")
+
+    im = axes[1].imshow(
+        lfield, origin="lower", aspect="auto", extent=[0.0, 1.0, 0.0, yf]
+    )
+    fig.colorbar(im, ax=axes[1])
+    axes[1].set_title("film thickness l(x, y)")
+    axes[1].set_xlabel("x (Landau)")
+    axes[1].set_ylabel("y (time)")
+
+    # L(t) curve at x=0.5 (denondimensionalized) vs COMSOL when available
+    axes[2].plot(y * p.tc, lfield[:, n_x // 2] * p.lc, label="PINN")
+    if err is not None:
+        axes[2].plot(err["t_comsol"], err["L_comsol"], "k--", label="COMSOL")
+    axes[2].set_title("film thickness L(t) at x=0.5")
+    axes[2].set_xlabel("t [s]")
+    axes[2].set_ylabel("L [m]")
+    axes[2].legend()
+
+    fig.tight_layout()
+    out_path = os.path.abspath("rpdm_validation.png")
+    fig.savefig(out_path, dpi=120)
+    plt.close(fig)
+    log.info(f"Validation figure written to {out_path}")
 
 
 def _verify_hard_bc(net, pde, device, log) -> None:

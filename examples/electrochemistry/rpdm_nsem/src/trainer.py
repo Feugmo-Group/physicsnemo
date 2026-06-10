@@ -59,8 +59,8 @@ from physicsnemo.experimental.models.scen import (  # noqa: E402
     SCENElementNetwork,
 )
 from physicsnemo.optim import (  # noqa: E402
-    BalancedResidualDecayRate,
     TwoPhaseOptimizer,
+    build_aggregator,
 )
 from physicsnemo.utils import set_default_dtype  # noqa: E402
 from physicsnemo.utils.logging import PythonLogger  # noqa: E402
@@ -206,7 +206,12 @@ def main(cfg: DictConfig) -> None:
     ]
     if has_interface:
         term_names.append("interface")
-    brdr = BalancedResidualDecayRate(num_losses=len(term_names))
+    brdr = build_aggregator(
+        "brdr",
+        all_params,
+        num_losses=len(term_names),
+        weights=[1.0] * len(term_names),
+    )
 
     adam = torch.optim.Adam(all_params, lr=float(cfg.train.adam_lr))
     lbfgs = torch.optim.LBFGS(
@@ -216,6 +221,13 @@ def main(cfg: DictConfig) -> None:
     )
     opt = TwoPhaseOptimizer(adam, lbfgs, aggregator=brdr)
 
+    # TwoPhaseOptimizer's closure takes no step argument, so we keep an
+    # incrementing counter here.  It only advances while BRDR is in training
+    # mode (the Adam phase); during the L-BFGS phase the aggregator is in
+    # eval() and freezes its state regardless, so reusing the same step across
+    # the many line-search closure evaluations is safe.
+    brdr_step = [0]
+
     def closure() -> torch.Tensor:
         cCV, cAV, phi, lvec = fields()
         terms = rpdm_residuals(cCV, cAV, phi, lvec, D1x, D2x, D1y, w_xt, x_grid, g)
@@ -224,8 +236,11 @@ def main(cfg: DictConfig) -> None:
             terms["interface"] = lambda_int * rpdm_interface_loss(
                 [cCV, cAV, phi], D1x, split_idx, interface_cond
             )
-        loss_vec = torch.stack([terms[name] for name in term_names])
-        return brdr(loss_vec)
+        losses_dict = {name: terms[name] for name in term_names}
+        total = brdr(losses_dict, brdr_step[0])
+        if brdr.training:
+            brdr_step[0] += 1
+        return total
 
     os.makedirs(cfg.output.dir, exist_ok=True)
     history = opt.run(
