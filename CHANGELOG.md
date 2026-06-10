@@ -10,6 +10,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Adds a physics-informed neural network (PINN) toolkit for electrochemical
+  transport, ported to the v2.0 idiom (`torch.nn.Module` models, inline SymPy
+  `PDE` + `PhysicsInformer`, explicit training loops):
+  - Seven custom architectures in `physicsnemo.experimental.models.pinn`
+    (`FiniteBasisNet`, `KolmogorovArnoldNet`, `FourierKolmogorovArnoldNet`,
+    `SplitTrunkNet`, `SeparableNet`, `GLLKolmogorovArnoldNet`, `PirateNet`).
+  - `MuonAdam` (Muon for 2D/4D parameters, Adam otherwise) and a guarded
+    `pytorch_optimizer` wrapper (`SOAP`, `make_pytorch_optimizer`) in
+    `physicsnemo.optim`; new optional dependency group `nvidia-physicsnemo[optim]`.
+  - `BalancedResidualDecayRate` (BRDR) adaptive loss weighting in
+    `physicsnemo.optim`, composable with `TwoPhaseOptimizer`.
+  - `set_default_dtype` / `get_default_dtype` in `physicsnemo.utils` for
+    double-precision PINN training.
+  - Electrochemistry examples `examples/electrochemistry/{rpdm,rpdm_nsem}`
+    (Refined Point Defect Model and its spectral NSEM variant).
 - Adds radiation transport example (`examples/nuclear_engineering/radiation_transport`)
 - Adds agent skills structure, and initial skill for 'discoverability'.
 - Adds xDeepONet to experimental models

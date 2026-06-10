@@ -50,6 +50,7 @@ dependencies = [
     "omegaconf>=2.3.0",
     "importlib-metadata>=8.7.1",
     "psutil>=6.0.0",
+    "matplotlib>=3.10.9",
 ]
 
 [project.urls]
@@ -333,6 +334,13 @@ gnns = [
 
 sym = [
     "sympy>=1.12",
+]
+
+# Extra optimizers for physicsnemo.optim (e.g. SOAP and other algorithms
+# wrapped from the pytorch_optimizer package).  MuonAdam and the two-phase
+# L-BFGS optimizer have no extra dependency and are always available.
+optim = [
+    "pytorch_optimizer>=3.0",
 ]
 
 
