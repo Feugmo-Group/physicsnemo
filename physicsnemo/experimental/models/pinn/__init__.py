@@ -54,7 +54,6 @@ from physicsnemo.experimental.models.pinn.kan import (
 from physicsnemo.experimental.models.pinn.piratenet import (
     PirateNet,
     PirateNetBlock,
-    RWFLinear,
 )
 from physicsnemo.experimental.models.pinn.spinn import SeparableNet
 from physicsnemo.experimental.models.pinn.split_trunk import SplitTrunkNet
@@ -71,5 +70,4 @@ __all__ = [
     "GLLKolmogorovArnoldNet",
     "PirateNet",
     "PirateNetBlock",
-    "RWFLinear",
 ]

@@ -38,82 +38,7 @@ from torch import Tensor
 
 import physicsnemo
 from physicsnemo.core.meta import ModelMetaData
-from physicsnemo.nn import get_activation
-
-
-class RWFLinear(nn.Module):
-    r"""Linear layer with Random Weight Factorization (RWF).
-
-    The weight matrix is factorised as :math:`W = \text{diag}(\exp(s)) \, V`,
-    where :math:`V` is Glorot-initialised and :math:`s` is a per-row log-scale
-    drawn from a log-normal distribution.  Storing the log-scale keeps the
-    parametrisation numerically stable.
-
-    Parameters
-    ----------
-    in_features : int
-        Size of each input sample :math:`D_{in}`.
-    out_features : int
-        Size of each output sample :math:`D_{out}`.
-    bias : bool, optional, default=True
-        If ``True``, adds a learnable bias.
-    mu : float, optional, default=1.0
-        Mean of the log-normal distribution for the scale factors.
-    sigma : float, optional, default=0.1
-        Standard deviation of the log-normal distribution for the scale factors.
-
-    Forward
-    -------
-    x : torch.Tensor
-        Input tensor of shape :math:`(\dots, D_{in})`.
-
-    Outputs
-    -------
-    torch.Tensor
-        Output tensor of shape :math:`(\dots, D_{out})`.
-    """
-
-    def __init__(
-        self,
-        in_features: int,
-        out_features: int,
-        bias: bool = True,
-        mu: float = 1.0,
-        sigma: float = 0.1,
-    ) -> None:
-        super().__init__()
-        self.in_features = in_features
-        self.out_features = out_features
-
-        # Glorot-initialised base weight
-        self.V = nn.Parameter(torch.empty(out_features, in_features))
-        nn.init.xavier_uniform_(self.V)
-
-        # per-row log-normal scale, stored as log for stability
-        s_init = torch.empty(out_features)
-        nn.init.normal_(s_init, mean=mu, std=sigma)
-        self.log_s = nn.Parameter(torch.log(s_init.abs()))
-
-        if bias:
-            self.bias = nn.Parameter(torch.zeros(out_features))
-        else:
-            self.register_parameter("bias", None)
-
-    def forward(self, x: Tensor) -> Tensor:
-        r"""Apply the random-weight-factorized linear map.
-
-        Parameters
-        ----------
-        x : torch.Tensor
-            Input tensor of shape :math:`(\dots, D_{in})`.
-
-        Returns
-        -------
-        torch.Tensor
-            Output tensor of shape :math:`(\dots, D_{out})`.
-        """
-        w = torch.exp(self.log_s).unsqueeze(-1) * self.V
-        return nn.functional.linear(x, w, self.bias)
+from physicsnemo.nn import WeightFactLinear, get_activation
 
 
 def _make_linear(
@@ -123,7 +48,11 @@ def _make_linear(
     rwf_mu: float,
     rwf_sigma: float,
 ) -> nn.Module:
-    r"""Build an RWF or standard linear layer.
+    r"""Build a weight-factorized or standard linear layer.
+
+    Random weight factorization is provided by the shared
+    :class:`~physicsnemo.nn.WeightFactLinear` layer, which factorizes the weight
+    as :math:`W = g \odot v` with a per-row log-normal scale.
 
     Parameters
     ----------
@@ -134,9 +63,9 @@ def _make_linear(
     use_rwf : bool
         Whether to use random weight factorization.
     rwf_mu : float
-        RWF log-normal scale mean.
+        Weight-factorization log-normal scale mean.
     rwf_sigma : float
-        RWF log-normal scale standard deviation.
+        Weight-factorization log-normal scale standard deviation.
 
     Returns
     -------
@@ -144,8 +73,8 @@ def _make_linear(
         The constructed linear layer.
     """
     if use_rwf:
-        return RWFLinear(
-            in_features, out_features, bias=True, mu=rwf_mu, sigma=rwf_sigma
+        return WeightFactLinear(
+            in_features, out_features, bias=True, mean=rwf_mu, stddev=rwf_sigma
         )
     lin = nn.Linear(in_features, out_features)
     nn.init.xavier_uniform_(lin.weight)
@@ -167,7 +96,7 @@ class PirateNetBlock(nn.Module):
     activation : torch.nn.Module
         Point-wise activation module.
     use_rwf : bool, optional, default=True
-        Replace :class:`torch.nn.Linear` with :class:`RWFLinear`.
+        Replace :class:`torch.nn.Linear` with :class:`~physicsnemo.nn.WeightFactLinear`.
     rwf_mu : float, optional, default=1.0
         RWF log-normal scale mean.
     rwf_sigma : float, optional, default=0.1
