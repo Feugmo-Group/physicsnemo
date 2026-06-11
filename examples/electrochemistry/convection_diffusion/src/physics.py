@@ -17,7 +17,65 @@ KTE clustering (alpha ≈ 0.85) at the right endpoint resolves it.
 
 from __future__ import annotations
 
+import sympy as sp
 import torch
+
+from physicsnemo.experimental.models.scen import AxisOperator, DVRPhysicsInformer
+from physicsnemo.sym.eq.pde import PDE
+
+
+class ConvDiffPDE(PDE):
+    """Symbolic statement of ε u'' + a u' = 0 for :class:`DVRPhysicsInformer`.
+
+    Parameters
+    ----------
+    eps : float
+        Diffusion coefficient ε.
+    a : float
+        Convection speed a.
+    """
+
+    name = "ConvDiff"
+
+    def __init__(self, eps: float, a: float):
+        self.dim = 1
+        x = sp.Symbol("x")
+        u = sp.Function("u")(x)
+        self.equations = {"conv_diff": sp.Number(eps) * u.diff(x, 2) + sp.Number(a) * u.diff(x, 1)}
+
+
+def make_cd_informer(
+    eps: float, a: float, D1: torch.Tensor, D2: torch.Tensor, device: str | None = None
+) -> DVRPhysicsInformer:
+    """Build a DVR-collocation informer for the convection-diffusion residual.
+
+    Parameters
+    ----------
+    eps, a : float
+        Diffusion coefficient and convection speed.
+    D1, D2 : torch.Tensor
+        First/second-derivative DVR matrices (global block-diagonal), ``(N, N)``.
+    device : str or None, optional
+        Device for the informer.
+
+    Returns
+    -------
+    DVRPhysicsInformer
+    """
+    return DVRPhysicsInformer(
+        required_outputs=["conv_diff"],
+        equations=ConvDiffPDE(eps, a),
+        operators={"x": AxisOperator(axis=0, D1=D1, D2=D2)},
+        device=device,
+    )
+
+
+def cd_residual_dvr(
+    informer: DVRPhysicsInformer, u: torch.Tensor, w_norm: torch.Tensor
+) -> torch.Tensor:
+    """Weighted residual for ε u'' + a u' = 0 via the DVR informer."""
+    R = informer.forward({"u": u})["conv_diff"].reshape(-1)
+    return w_norm @ (R * R)
 
 
 def cd_residual(
@@ -28,7 +86,7 @@ def cd_residual(
     eps: float,
     a: float,
 ) -> torch.Tensor:
-    """Weighted residual for ε u'' + a u' = 0."""
+    """Weighted residual for ε u'' + a u' = 0 (hand-rolled reference)."""
     R = eps * (D2 @ u) + a * (D1 @ u)
     return w_norm @ (R * R)
 

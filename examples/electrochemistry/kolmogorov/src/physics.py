@@ -25,12 +25,110 @@ from __future__ import annotations
 
 import math
 
+import sympy as sp
 import torch
+
+from physicsnemo.experimental.models.scen import AxisOperator, DVRPhysicsInformer
+from physicsnemo.sym.eq.pde import PDE
 
 
 def kolmogorov_forcing(xy: torch.Tensor, n_force: int) -> torch.Tensor:
     """Forcing F(x,y) = n_force · sin(n_force · y)."""
     return float(n_force) * torch.sin(float(n_force) * xy[:, 1])
+
+
+class KolmogorovMixedPDE(PDE):
+    r"""Mixed (stream-vorticity) Kolmogorov-flow system for :class:`DVRPhysicsInformer`.
+
+    The 4th-order (biharmonic) steady vorticity equation is recast as a coupled
+    **second-order** system in the stream function ``psi`` and the vorticity
+    ``omega``:
+
+    .. math::
+        \omega - \nabla^2\psi = 0, \qquad
+        -\nu\,\nabla^2\omega + J(\psi,\omega) - F = 0,
+
+    with the Jacobian ``J(ψ,ω) = ψ_x ω_y − ψ_y ω_x`` and ``F`` the forcing leaf.
+    This removes the biharmonic operator entirely.
+
+    Parameters
+    ----------
+    nu : float
+        Kinematic viscosity ν.
+    """
+
+    name = "KolmogorovMixed"
+
+    def __init__(self, nu: float):
+        self.dim = 2
+        x, y = sp.symbols("x y")
+        psi = sp.Function("psi")(x, y)
+        omega = sp.Function("omega")(x, y)
+        force = sp.Function("F")(x, y)
+        lap_psi = psi.diff(x, 2) + psi.diff(y, 2)
+        lap_omega = omega.diff(x, 2) + omega.diff(y, 2)
+        jacobian = psi.diff(x, 1) * omega.diff(y, 1) - psi.diff(y, 1) * omega.diff(x, 1)
+        self.equations = {
+            "res_w": omega - lap_psi,
+            "res_vort": -sp.Number(nu) * lap_omega + jacobian - force,
+        }
+
+
+def make_kolmogorov_informer(
+    D1x: torch.Tensor,
+    D1y: torch.Tensor,
+    D2x: torch.Tensor,
+    D2y: torch.Tensor,
+    nu: float,
+    device: str | None = None,
+) -> DVRPhysicsInformer:
+    """Build a DVR-collocation informer for the mixed Kolmogorov system.
+
+    Parameters
+    ----------
+    D1x, D1y, D2x, D2y : torch.Tensor
+        First/second-derivative DVR operators (flattened 2D), each ``(N, N)``.
+    nu : float
+        Kinematic viscosity ν.
+    device : str or None, optional
+        Device for the informer.
+
+    Returns
+    -------
+    DVRPhysicsInformer
+    """
+    return DVRPhysicsInformer(
+        required_outputs=["res_w", "res_vort"],
+        equations=KolmogorovMixedPDE(nu),
+        operators={
+            "x": AxisOperator(axis=0, D1=D1x, D2=D2x),
+            "y": AxisOperator(axis=0, D1=D1y, D2=D2y),
+        },
+        device=device,
+    )
+
+
+def kolmogorov_residuals_dvr(
+    informer: DVRPhysicsInformer,
+    psi: torch.Tensor,
+    omega: torch.Tensor,
+    w_norm: torch.Tensor,
+    xy: torch.Tensor,
+    n_force: int,
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Weighted residual losses for the mixed Kolmogorov system.
+
+    Returns
+    -------
+    (l_w, l_vort) : tuple of torch.Tensor
+        Scalar weighted MSEs of the vorticity definition and the vorticity-
+        transport equation, respectively.
+    """
+    force = kolmogorov_forcing(xy, n_force)
+    res = informer.forward({"psi": psi, "omega": omega, "F": force})
+    r_w = res["res_w"].reshape(-1)
+    r_vort = res["res_vort"].reshape(-1)
+    return w_norm @ (r_w * r_w), w_norm @ (r_vort * r_vort)
 
 
 def kolmogorov_residual(

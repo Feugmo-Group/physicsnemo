@@ -2,7 +2,7 @@
 # SPDX-FileCopyrightText: All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
 
-# Refined Point Defect Model (RPDM) — spectral-collocation (NSEM/SCEN)
+# Refined Point Defect Model (RPDM) — DVR-collocation (NSEM/SCEN)
 # Passive mode, constant external potential (const_0.1_V reference).
 
 domain:
@@ -20,7 +20,7 @@ domain:
     - {N: 14, a: 0.1, b: 0.9, alpha: 0.0, mapping: kte}
     - {N: 16, a: 0.9, b: 1.0, alpha: 0.9, mapping: kte}
   # Time domain y in [0, yf]
-  Nt: 12           # spectral nodes along time
+  Nt: 12           # DVR (GLL) nodes along time
   alpha_t: 0.0
   yf: 1.0          # final dimensionless time (= tc / tc)
   Eext: 0.1        # [V] constant external potential

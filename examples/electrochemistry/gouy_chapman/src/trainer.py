@@ -30,9 +30,9 @@ from physicsnemo.optim.loss_landscape import loss_landscape_scan, plot_landscape
 from src.metrics import compute_errors_linear
 from src.physics import (
     interface_loss_list,
+    make_pb_informer,
     pb_bc_loss,
-    pb_linear_residual,
-    pb_nonlinear_residual,
+    pb_residual_dvr,
 )
 
 
@@ -106,7 +106,13 @@ def main(cfg: DictConfig) -> None:
     w_global = torch.cat([m.weights for m in net.mappers])
     sizes = net.element_sizes
 
-    residual_fn = pb_linear_residual if variant == "linear" else pb_nonlinear_residual
+    # DVR-collocation informer (linear ψ″−κ²ψ or nonlinear ψ″−κ²sinh ψ).
+    informer = make_pb_informer(
+        kappa_sq, D2_global, nonlinear=(variant != "linear"), device=str(x_global.device)
+    )
+
+    def residual_fn(psi, _D2, w_norm, _kappa_sq):
+        return pb_residual_dvr(informer, psi, w_norm)
 
     adam = torch.optim.Adam(net.parameters(), lr=cfg.train.adam_lr)
     lbfgs = torch.optim.LBFGS(net.parameters(), line_search_fn="strong_wolfe", max_iter=20)

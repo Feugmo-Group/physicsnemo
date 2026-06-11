@@ -27,7 +27,72 @@ from __future__ import annotations
 
 import math
 
+import sympy as sp
 import torch
+
+from physicsnemo.experimental.models.scen import AxisOperator, DVRPhysicsInformer
+from physicsnemo.sym.eq.pde import PDE
+
+
+class PoissonBoltzmannPDE(PDE):
+    """Symbolic Poisson-Boltzmann residual for :class:`DVRPhysicsInformer`.
+
+    Parameters
+    ----------
+    kappa_sq : float
+        Squared inverse Debye length κ².
+    nonlinear : bool, default False
+        If ``True``, use the sinh form ``ψ'' − κ²sinh(ψ)``; otherwise the
+        linearized ``ψ'' − κ²ψ``.
+    """
+
+    name = "PoissonBoltzmann"
+
+    def __init__(self, kappa_sq: float, nonlinear: bool = False):
+        self.dim = 1
+        x = sp.Symbol("x")
+        psi = sp.Function("psi")(x)
+        reaction = sp.sinh(psi) if nonlinear else psi
+        self.equations = {"pb": psi.diff(x, 2) - sp.Number(kappa_sq) * reaction}
+
+
+def make_pb_informer(
+    kappa_sq: float,
+    D2: torch.Tensor,
+    nonlinear: bool = False,
+    device: str | None = None,
+) -> DVRPhysicsInformer:
+    """Build a DVR-collocation informer for the Poisson-Boltzmann residual.
+
+    Parameters
+    ----------
+    kappa_sq : float
+        Squared inverse Debye length κ².
+    D2 : torch.Tensor
+        Second-derivative DVR matrix (global block-diagonal), ``(N, N)``.
+    nonlinear : bool, default False
+        Select the sinh form when ``True``.
+    device : str or None, optional
+        Device for the informer.
+
+    Returns
+    -------
+    DVRPhysicsInformer
+    """
+    return DVRPhysicsInformer(
+        required_outputs=["pb"],
+        equations=PoissonBoltzmannPDE(kappa_sq, nonlinear),
+        operators={"x": AxisOperator(axis=0, D1=None, D2=D2)},
+        device=device,
+    )
+
+
+def pb_residual_dvr(
+    informer: DVRPhysicsInformer, psi: torch.Tensor, w_norm: torch.Tensor
+) -> torch.Tensor:
+    """Weighted Poisson-Boltzmann residual via the DVR informer."""
+    R = informer.forward({"psi": psi})["pb"].reshape(-1)
+    return w_norm @ (R * R)
 
 
 def pb_linear_residual(

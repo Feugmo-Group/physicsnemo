@@ -42,6 +42,7 @@ from src.physics import (  # noqa: E402
     NondimGroups,
     Parameters,
     make_computations_by_name,
+    make_interior_informer,
     rpdm_residuals,
 )
 
@@ -176,8 +177,11 @@ def _build_inputs():
 def test_pde_parity():
     cCV, cAV, phif, lvec, D1x, D2x, D1y, w_xt, x_grid, g = _build_inputs()
     comps = make_computations_by_name(g)
+    informer = make_interior_informer(g, D1x, D2x, D1y, device=str(x_grid.device))
 
-    new = rpdm_residuals(cCV, cAV, phif, lvec, D1x, D2x, D1y, w_xt, x_grid, g, comps)
+    new = rpdm_residuals(
+        cCV, cAV, phif, lvec, D1x, D2x, D1y, w_xt, x_grid, g, comps, informer
+    )
     old = _hand_rolled_residuals(cCV, cAV, phif, lvec, D1x, D2x, D1y, w_xt, x_grid, g)
 
     worst_rel = 0.0
@@ -193,7 +197,10 @@ def test_pde_parity():
 if __name__ == "__main__":
     cCV, cAV, phif, lvec, D1x, D2x, D1y, w_xt, x_grid, g = _build_inputs()
     comps = make_computations_by_name(g)
-    new = rpdm_residuals(cCV, cAV, phif, lvec, D1x, D2x, D1y, w_xt, x_grid, g, comps)
+    informer = make_interior_informer(g, D1x, D2x, D1y, device=str(x_grid.device))
+    new = rpdm_residuals(
+        cCV, cAV, phif, lvec, D1x, D2x, D1y, w_xt, x_grid, g, comps, informer
+    )
     old = _hand_rolled_residuals(cCV, cAV, phif, lvec, D1x, D2x, D1y, w_xt, x_grid, g)
     print(f"{'term':14s} {'old':>14s} {'new':>14s} {'absdiff':>12s} {'reldiff':>12s}")
     for k in old:

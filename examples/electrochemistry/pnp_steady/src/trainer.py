@@ -32,7 +32,11 @@ from physicsnemo.experimental.models.scen import SCENElementNetwork
 from physicsnemo.optim import TwoPhaseOptimizer
 
 from src.metrics import compute_errors, print_errors
-from src.physics import pnp_steady_bc_loss, pnp_steady_residuals
+from src.physics import (
+    make_pnp_steady_informer,
+    pnp_steady_bc_loss,
+    pnp_steady_residuals_dvr,
+)
 
 
 def _init_wandb(cfg: DictConfig) -> "wandb.Run | None":
@@ -107,6 +111,9 @@ def main(cfg: DictConfig) -> None:
     w = torch.cat([m.weights for m in net_cp.mappers])
     w_norm = w / w.sum()
 
+    # DVR-collocation informer for the 3 coupled interior residuals.
+    informer = make_pnp_steady_informer(D1, D2, device=str(x.device))
+
     lambda_bc = cfg.physics.physics.lambda_bc
     all_params = (
         list(net_cp.parameters())
@@ -122,7 +129,7 @@ def main(cfg: DictConfig) -> None:
         cp = net_cp()
         cn = net_cn()
         phi = net_phi()
-        l_cp, l_cn, l_phi = pnp_steady_residuals(cp, cn, phi, D1, D2, w_norm, x)
+        l_cp, l_cn, l_phi = pnp_steady_residuals_dvr(informer, cp, cn, phi, w_norm, x)
         bc = pnp_steady_bc_loss(cp, cn, phi)
         return l_cp + l_cn + l_phi + lambda_bc * bc
 

@@ -30,7 +30,11 @@ from physicsnemo.experimental.models.scen import DVRMapper, DVRMapper2D, SCENEle
 from physicsnemo.optim import TwoPhaseOptimizer
 
 from src.metrics import compute_errors
-from src.physics import pnp_2d_exact, pnp_2d_residuals
+from src.physics import (
+    make_pnp_2d_informer,
+    pnp_2d_exact,
+    pnp_2d_residuals_dvr,
+)
 
 
 def _init_wandb(cfg):
@@ -67,7 +71,7 @@ def main(cfg: DictConfig) -> None:
     )
     xy = mapper2d.xy_nodes          # (Nx*Ny, 2)
     D1x, D1y = mapper2d.D1x, mapper2d.D1y
-    lap = mapper2d.laplacian
+    D2x, D2y = mapper2d.D2x, mapper2d.D2y
     w2d = mapper2d.weights
     w_norm = w2d / w2d.sum()
     N_spatial = mapper2d.Nx * mapper2d.Ny
@@ -77,6 +81,9 @@ def main(cfg: DictConfig) -> None:
     t_grid = mapper_t.nodes         # (Nt,)
     D1t = mapper_t.D1               # (Nt, Nt)
     Nt = dom.Nt
+
+    # DVR-collocation informer over the full (Nt, N_spatial) space-time grid.
+    informer = make_pnp_2d_informer(D1x, D1y, D2x, D2y, D1t, device=str(xy.device))
 
     # ── Networks: flat space-time grids ─────────────────────────────────────
     flat_elem = [{"N": N_spatial * Nt, "a": -1.0, "b": 1.0}]
@@ -90,32 +97,23 @@ def main(cfg: DictConfig) -> None:
 
     lambda_ic = float(phys.lambda_ic)
     wt = mapper_t.weights / mapper_t.weights.sum()   # (Nt,)
-    w_xyt = (wt.unsqueeze(1) * w_norm.unsqueeze(0)).reshape(-1)  # (Nt*N_spatial,)
+    w_xyt = wt.unsqueeze(1) * w_norm.unsqueeze(0)     # (Nt, N_spatial)
 
     def closure():
         cp_flat = net_cp()   # (Nt*N_spatial,)
         cn_flat = net_cn()
         phi_flat = net_phi()
 
-        # Reshape to (Nt, N_spatial), apply time deriv row-wise
+        # Reshape to (Nt, N_spatial); the informer applies the time and spatial
+        # operators over the whole space-time grid at once (no Python loop).
         cp_2t = cp_flat.view(Nt, N_spatial)
         cn_2t = cn_flat.view(Nt, N_spatial)
         phi_2t = phi_flat.view(Nt, N_spatial)
-        dcp_dt_2t = D1t @ cp_2t    # (Nt, N_spatial)
-        dcn_dt_2t = D1t @ cn_2t
 
-        # Aggregate residual over all time slices
-        total_loss = torch.tensor(0.0, dtype=dtype)
-        for i, t_val in enumerate(t_grid.tolist()):
-            cp_i = cp_2t[i]
-            cn_i = cn_2t[i]
-            phi_i = phi_2t[i]
-            dcp_i = dcp_dt_2t[i]
-            dcn_i = dcn_dt_2t[i]
-            l_cp, l_cn, l_phi = pnp_2d_residuals(
-                cp_i, cn_i, phi_i, dcp_i, dcn_i, lap, D1x, D1y, w_norm, xy, t_val
-            )
-            total_loss = total_loss + wt[i] * (l_cp + l_cn + l_phi)
+        l_cp, l_cn, l_phi = pnp_2d_residuals_dvr(
+            informer, cp_2t, cn_2t, phi_2t, w_xyt, xy, t_grid
+        )
+        total_loss = l_cp + l_cn + l_phi
 
         # IC: fields at t[0] match exact solution
         t0 = t_grid[0].item()

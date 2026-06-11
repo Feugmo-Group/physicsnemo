@@ -28,8 +28,9 @@ from physicsnemo.optim import TwoPhaseOptimizer
 from src.metrics import compute_diagnostics
 from src.physics import (
     cahn_hilliard_mass_loss,
-    cahn_hilliard_noflux_bc_loss,
-    cahn_hilliard_residual,
+    cahn_hilliard_noflux_bc_mixed,
+    cahn_hilliard_residuals_dvr,
+    make_ch_informer,
 )
 
 
@@ -78,25 +79,38 @@ def main(cfg: DictConfig) -> None:
     c_mean = float(phys.c_mean)
     lambda_bc = float(phys.lambda_bc)
     lambda_mass = float(phys.lambda_mass)
+    lambda_mu = float(phys.get("lambda_mu", 1.0))
 
     net = SCENElementNetwork(
         element_configs,
         hidden_dim=cfg.model.hidden_dim, n_layers=cfg.model.n_layers,
         backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype_str,
     )
-    D1, D2, D4 = net.D1_global, net.D2_global, net.D4_global
+    # Mixed (auxiliary-field) formulation: a second network for the chemical
+    # potential μ, so the 4th-order Cahn-Hilliard equation becomes two coupled
+    # second-order residuals (no D4 operator).
+    net_mu = SCENElementNetwork(
+        element_configs,
+        hidden_dim=cfg.model.hidden_dim, n_layers=cfg.model.n_layers,
+        backbone=cfg.model.backbone, poly_degree=cfg.model.poly_degree, dtype=dtype_str,
+    )
+    D1, D2 = net.D1_global, net.D2_global
     w = torch.cat([m.weights for m in net.mappers])
     w_norm = w / w.sum()
 
-    adam = torch.optim.Adam(net.parameters(), lr=cfg.train.adam_lr)
-    lbfgs = torch.optim.LBFGS(net.parameters(), line_search_fn="strong_wolfe", max_iter=20)
+    informer = make_ch_informer(eps_sq, D2, device=str(w.device))
+    params = list(net.parameters()) + list(net_mu.parameters())
+    adam = torch.optim.Adam(params, lr=cfg.train.adam_lr)
+    lbfgs = torch.optim.LBFGS(params, line_search_fn="strong_wolfe", max_iter=20)
     opt = TwoPhaseOptimizer(adam, lbfgs)
 
     def closure():
         c = net()
+        mu = net_mu()
+        l_mu, l_ch = cahn_hilliard_residuals_dvr(informer, c, mu, w_norm)
         return (
-            cahn_hilliard_residual(c, D2, D4, w_norm, eps_sq)
-            + lambda_bc * cahn_hilliard_noflux_bc_loss(c, D1, D2, eps_sq)
+            lambda_mu * l_mu + l_ch
+            + lambda_bc * cahn_hilliard_noflux_bc_mixed(c, mu, D1)
             + lambda_mass * cahn_hilliard_mass_loss(c, w_norm, c_mean)
         )
 

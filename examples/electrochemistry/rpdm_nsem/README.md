@@ -1,13 +1,19 @@
-# RPDM (Refined Point Defect Model) — Spectral NSEM/SCEN variant
+# RPDM (Refined Point Defect Model) — DVR-collocation NSEM/SCEN variant
 
-Spectral-collocation reimplementation of the passive Refined Point Defect Model
+DVR-collocation reimplementation of the passive Refined Point Defect Model
 for electrochemical oxide-film growth on iron. This is the **NSEM/SCEN** counterpart
 of the autodiff PINN example in `examples/electrochemistry/rpdm/`: it solves the same
-dimensionless PDE system but uses **precomputed spectral differentiation operators**
-instead of automatic differentiation.
+dimensionless PDE system but uses **precomputed DVR (Gauss–Lobatto–Legendre)
+differentiation operators** instead of automatic differentiation.
 
-> **Status: EXPERIMENTAL.** The goal of this example is correctness of the spectral
-> idiom and an end-to-end-runnable pipeline, *not* quantitative accuracy. The RPDM
+> **Naming.** "DVR collocation" here means the precomputed `DVRMapper` `D1`/`D2`
+> differentiation matrices on clustered GLL nodes. This is **not** the same as
+> PhysicsNeMo's `PhysicsInformer(grad_method="spectral")`, which is FFT
+> differentiation on a *periodic, uniform* grid. We never use that grad_method;
+> residuals are evaluated via `pde.make_computations()` on the DVR operators.
+
+> **Status: EXPERIMENTAL.** The goal of this example is correctness of the
+> DVR-collocation idiom and an end-to-end-runnable pipeline, *not* quantitative accuracy. The RPDM
 > reaction/flux terms are extremely stiff (exponential prefactors spanning many
 > decades); two of the boundary-flux residuals do not fully converge with the small
 > default grid/network. See **Challenges & Notes** below.
@@ -39,9 +45,9 @@ remeshing. Residuals (ported verbatim from `pdm/pdm.py`):
 **Passive mode only.** The transpassive electron/hole transport (`transport_e`,
 `transport_h`) and the `ce`/`ch` concentrations are dropped (see *What's simplified*).
 
-## Spectral (NSEM) vs. autodiff (PINN) trade-off
+## DVR-collocation (NSEM) vs. autodiff (PINN) trade-off
 
-| | autodiff PINN (`rpdm/`) | spectral NSEM (`rpdm_nsem/`) |
+| | autodiff PINN (`rpdm/`) | DVR NSEM (`rpdm_nsem/`) |
 |---|---|---|
 | Derivatives | `torch.autograd` on a random point cloud | precomputed `D1`, `D2` matrices via `DVRMapper` |
 | Sampling | random collocation, resampled each step | fixed tensor-product LGL grid |
@@ -50,18 +56,18 @@ remeshing. Residuals (ported verbatim from `pdm/pdm.py`):
 | Boundary layers | needs many points | KTE node clustering (`alpha_x`) near endpoints |
 | Moving boundary | `l.diff(y)` via autograd | `l_y = D1y @ l` on the time grid |
 
-The spectral approach trades flexible point sampling for a structured grid on which
+The DVR-collocation approach trades flexible point sampling for a structured grid on which
 derivatives are *exact linear operators*. For smooth fields this is far more accurate
 per degree of freedom; the price is the tensor-product structure and the need to keep
 the grid fixed.
 
-## How the spectral discretization works
+## How the DVR discretization works
 
 - The **spatial** direction uses a **multi-element mesh** on `x ∈ [0, 1]`: one
   `DVRMapper` per element (`conf/config.yaml: domain.x_elements`). With a large
   Poisson factor `eps` the film potential is near-electroneutral in the bulk and
   drops sharply in thin **space-charge (Debye) layers at both interfaces** — `x=0`
-  (metal/film) and `x=1` (film/solution). A single spectral element cannot resolve
+  (metal/film) and `x=1` (film/solution). A single DVR element cannot resolve
   those layers, so we place a refined element against each interface and a coarse
   bulk element between them:
   - `[0.0, 0.1]` metal/film layer — `mapping='log'` clusters nodes near `x=0`,
@@ -135,11 +141,11 @@ With the full default run (2000-step IC pretrain → Adam → L-BFGS):
 
 ## Challenges & Notes (for future engineers)
 
-- **Moving boundary on a spectral grid.** The Landau transform is the key enabler:
+- **Moving boundary on a DVR grid.** The Landau transform is the key enabler:
   the physical domain `[0, l(y)]` is mapped to a *fixed* `x ∈ [0, 1]`, so no
   remeshing is needed. The moving boundary appears purely algebraically as `1/l²`
   scalings and the convective term `x·l_y·c_x/l`. `l(y)` lives on its own time-only
-  spectral network; `l_y = D1y @ l` reuses the same time differentiation matrix as
+  DVR network; `l_y = D1y @ l` reuses the same time differentiation matrix as
   the field time derivatives. `l` is kept strictly positive with
   `softplus(net) + 1e-3` so the `1/l` and `1/l²` terms never blow up during training.
 

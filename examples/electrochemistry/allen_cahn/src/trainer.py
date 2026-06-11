@@ -28,7 +28,12 @@ from physicsnemo.optim import TwoPhaseOptimizer
 from physicsnemo.optim.loss_landscape import loss_landscape_scan, plot_landscape
 
 from src.metrics import compute_errors
-from src.physics import allen_cahn_bc_loss, allen_cahn_exact, allen_cahn_residual
+from src.physics import (
+    allen_cahn_bc_loss,
+    allen_cahn_exact,
+    allen_cahn_residual_dvr,
+    make_allen_cahn_informer,
+)
 
 
 def _init_wandb(cfg):
@@ -85,6 +90,10 @@ def main(cfg: DictConfig) -> None:
     w = net.mappers[0].weights
     w_norm = w / w.sum()
 
+    # DVR-collocation informer: residual ε²u″ − (u³ − u) assembled symbolically
+    # from the precomputed D2 operator (identical to the hand-rolled residual).
+    informer = make_allen_cahn_informer(eps_sq, D2, device=str(x.device))
+
     # ── Stage 1: pretrain to tanh exact shape ────────────────────────────────
     # Without this, the network learns a linear ramp that satisfies BCs but has
     # near-zero PDE residual — a flat basin Adam cannot escape.
@@ -113,7 +122,7 @@ def main(cfg: DictConfig) -> None:
 
     def closure():
         u = net()
-        return allen_cahn_residual(u, D2, w_norm, eps_sq) + lambda_bc * allen_cahn_bc_loss(u)
+        return allen_cahn_residual_dvr(informer, u, w_norm) + lambda_bc * allen_cahn_bc_loss(u)
 
     os.makedirs(cfg.output.dir, exist_ok=True)
     wandb_run = _init_wandb(cfg)
@@ -147,7 +156,7 @@ def main(cfg: DictConfig) -> None:
     def _landscape_closure():
         u = net()
         return {
-            "pde": float(allen_cahn_residual(u, D2, w_norm, eps_sq)),
+            "pde": float(allen_cahn_residual_dvr(informer, u, w_norm)),
             "bc":  float(lambda_bc * allen_cahn_bc_loss(u)),
         }
 

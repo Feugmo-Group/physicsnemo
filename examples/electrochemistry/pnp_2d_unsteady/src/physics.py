@@ -20,9 +20,121 @@ from __future__ import annotations
 
 import math
 
+import sympy as sp
 import torch
 
+from physicsnemo.experimental.models.scen import AxisOperator, DVRPhysicsInformer
+from physicsnemo.sym.eq.pde import PDE
+
 PI = math.pi
+
+
+class Pnp2DUnsteadyPDE(PDE):
+    """Symbolic 2D unsteady PNP system for :class:`DVRPhysicsInformer`.
+
+    Spatial coordinates ``x``, ``y`` (both acting on the flattened 2D grid),
+    time ``z``.  Three coupled fields ``cp``, ``cn``, ``phi``; manufactured
+    forcings ``f1``, ``f2`` enter as leaf functions supplied at evaluation time.
+    """
+
+    name = "Pnp2DUnsteady"
+
+    def __init__(self):
+        self.dim = 3
+        x, y, z = sp.symbols("x y z")
+        cp = sp.Function("cp")(x, y, z)
+        cn = sp.Function("cn")(x, y, z)
+        phi = sp.Function("phi")(x, y, z)
+        f1 = sp.Function("f1")(x, y, z)
+        f2 = sp.Function("f2")(x, y, z)
+
+        def lap(f):
+            return f.diff(x, 2) + f.diff(y, 2)
+
+        def grad_dot(a, b):
+            return a.diff(x, 1) * b.diff(x, 1) + a.diff(y, 1) * b.diff(y, 1)
+
+        self.equations = {
+            "res_cp": cp.diff(z, 1) - lap(cp) - grad_dot(cp, phi) - cp * lap(phi) - f1,
+            "res_cn": cn.diff(z, 1) - lap(cn) + grad_dot(cn, phi) + cn * lap(phi) - f2,
+            "res_phi": lap(phi) + cp - cn,
+        }
+
+
+def make_pnp_2d_informer(
+    D1x: torch.Tensor,
+    D1y: torch.Tensor,
+    D2x: torch.Tensor,
+    D2y: torch.Tensor,
+    D1t: torch.Tensor,
+    device: str | None = None,
+) -> DVRPhysicsInformer:
+    """Build a DVR-collocation informer for the 2D unsteady PNP system.
+
+    Parameters
+    ----------
+    D1x, D1y, D2x, D2y : torch.Tensor
+        Spatial first/second-derivative DVR operators (flattened 2D), each
+        ``(N_spatial, N_spatial)``; act on grid axis 1.
+    D1t : torch.Tensor
+        Time first-derivative DVR matrix ``(Nt, Nt)``; acts on grid axis 0.
+    device : str or None, optional
+        Device for the informer.
+
+    Returns
+    -------
+    DVRPhysicsInformer
+    """
+    return DVRPhysicsInformer(
+        required_outputs=["res_cp", "res_cn", "res_phi"],
+        equations=Pnp2DUnsteadyPDE(),
+        operators={
+            "x": AxisOperator(axis=1, D1=D1x, D2=D2x),
+            "y": AxisOperator(axis=1, D1=D1y, D2=D2y),
+            "z": AxisOperator(axis=0, D1=D1t, D2=None),
+        },
+        device=device,
+    )
+
+
+def pnp_2d_sources_spacetime(
+    xy: torch.Tensor, t_grid: torch.Tensor
+) -> tuple[torch.Tensor, torch.Tensor]:
+    """Stack the manufactured sources over a full ``(Nt, N_spatial)`` grid."""
+    f1_rows, f2_rows = [], []
+    for t_val in t_grid.tolist():
+        f1_i, f2_i = pnp_2d_sources(xy, t_val)
+        f1_rows.append(f1_i)
+        f2_rows.append(f2_i)
+    return torch.stack(f1_rows, dim=0), torch.stack(f2_rows, dim=0)
+
+
+def pnp_2d_residuals_dvr(
+    informer: DVRPhysicsInformer,
+    cp: torch.Tensor,
+    cn: torch.Tensor,
+    phi: torch.Tensor,
+    w_xyt: torch.Tensor,
+    xy: torch.Tensor,
+    t_grid: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Weighted space-time residual losses on the full grid via the informer.
+
+    Parameters
+    ----------
+    cp, cn, phi : shape ``(Nt, N_spatial)`` — fields on the space-time grid.
+    w_xyt : shape ``(Nt, N_spatial)`` — outer product ``wt ⊗ w_norm``.
+    xy : shape ``(N_spatial, 2)`` — 2D spatial nodes.
+    t_grid : shape ``(Nt,)`` — time nodes.
+    """
+    f1, f2 = pnp_2d_sources_spacetime(xy, t_grid)
+    res = informer.forward({"cp": cp, "cn": cn, "phi": phi, "f1": f1, "f2": f2})
+    r_cp, r_cn, r_phi = res["res_cp"], res["res_cn"], res["res_phi"]
+    return (
+        (w_xyt * r_cp**2).sum(),
+        (w_xyt * r_cn**2).sum(),
+        (w_xyt * r_phi**2).sum(),
+    )
 
 
 def pnp_2d_exact(xy: torch.Tensor, t: float) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:

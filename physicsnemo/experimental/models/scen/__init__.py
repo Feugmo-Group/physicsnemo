@@ -38,6 +38,11 @@ Key components
     LGL / Chebyshev / Clenshaw-Curtis quadrature rules.
 """
 
+from physicsnemo.experimental.models.scen.dvr_informer import (
+    AxisOperator,
+    DVRPhysicsInformer,
+    GradientsDVR,
+)
 from physicsnemo.experimental.models.scen.dvr_mapper import DVRMapper
 from physicsnemo.experimental.models.scen.dvr_mapper_2d import DVRMapper2D
 from physicsnemo.experimental.models.scen.dvr_mapper_3d import DVRMapper3D
@@ -54,6 +59,9 @@ from physicsnemo.experimental.models.scen.mortar import compute_mortar_projectio
 from physicsnemo.experimental.models.scen.quadrature import get_quadrature_data
 
 __all__ = [
+    "AxisOperator",
+    "DVRPhysicsInformer",
+    "GradientsDVR",
     "DVRMapper",
     "DVRMapper2D",
     "DVRMapper3D",

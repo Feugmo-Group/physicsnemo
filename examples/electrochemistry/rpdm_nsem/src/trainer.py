@@ -14,9 +14,9 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Refined Point Defect Model (RPDM) — spectral-collocation (NSEM/SCEN) trainer.
+"""Refined Point Defect Model (RPDM) — DVR-collocation (NSEM/SCEN) trainer.
 
-Reimplements the passive RPDM on a space-time tensor-product spectral grid using
+Reimplements the passive RPDM on a space-time tensor-product DVR grid using
 *precomputed differentiation operators* (no autodiff for the PDE).  Four field
 networks are trained:
 
@@ -50,6 +50,7 @@ from src.physics import (  # noqa: E402
     NondimGroups,
     Parameters,
     make_computations_by_name,
+    make_interior_informer,
     rpdm_ic_loss,
     rpdm_interface_loss,
     rpdm_residuals,
@@ -91,11 +92,11 @@ def main(cfg: DictConfig) -> None:
     # precomputed-operator derivatives (see physics.rpdm_residuals).
     comps = make_computations_by_name(g)
 
-    # ── Space-time spectral grids ─────────────────────────────────────────────
+    # ── Space-time DVR grids ──────────────────────────────────────────────────
     # Multi-element spatial mesh on x in [0, 1].  The film potential is near
     # electroneutral in the bulk (the Poisson factor eps is large) and drops
     # sharply inside thin space-charge layers at BOTH interfaces — x=0 (metal/
-    # film) and x=1 (film/solution).  A single spectral element cannot resolve
+    # film) and x=1 (film/solution).  A single DVR element cannot resolve
     # those layers, so we place a refined element against each interface and a
     # coarser bulk element between them.  Block-diagonal global operators
     # (one DVRMapper per element) are tied together by C0/C1 continuity terms.
@@ -135,6 +136,11 @@ def main(cfg: DictConfig) -> None:
         f"Spatial mesh: {len(x_mappers)} elements, sizes={elem_sizes}, "
         f"Nx_total={Nx}, interfaces at columns {split_idx}"
     )
+
+    # DVR-collocation informer for the full-grid interior residuals (the same
+    # unified PhysicsInformer API as the autodiff RPDM example).  The boundary
+    # and film-growth terms stay on the sliced-Computation path in rpdm_residuals.
+    informer = make_interior_informer(g, D1x, D2x, D1y, device=str(x_grid.device))
 
     # ── Field networks ────────────────────────────────────────────────────────
     flat_element = [{"N": Nx * Nt, "a": -1.0, "b": 1.0}]
@@ -236,7 +242,7 @@ def main(cfg: DictConfig) -> None:
     def closure() -> torch.Tensor:
         cCV, cAV, phi, lvec = fields()
         terms = rpdm_residuals(
-            cCV, cAV, phi, lvec, D1x, D2x, D1y, w_xt, x_grid, g, comps
+            cCV, cAV, phi, lvec, D1x, D2x, D1y, w_xt, x_grid, g, comps, informer
         )
         terms["ic"] = lambda_ic * rpdm_ic_loss(cCV, cAV, phi, lvec, x_grid, g)
         if has_interface:
@@ -264,7 +270,7 @@ def main(cfg: DictConfig) -> None:
     with torch.no_grad():
         cCV, cAV, phi, lvec = fields()
         terms = rpdm_residuals(
-            cCV, cAV, phi, lvec, D1x, D2x, D1y, w_xt, x_grid, g, comps
+            cCV, cAV, phi, lvec, D1x, D2x, D1y, w_xt, x_grid, g, comps, informer
         )
         for name, val in terms.items():
             logger.info(f"  residual[{name}] = {float(val):.3e}")

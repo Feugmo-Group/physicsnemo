@@ -26,7 +26,11 @@ from physicsnemo.experimental.models.scen import DVRMapper3D, SCENElementNetwork
 from physicsnemo.optim import TwoPhaseOptimizer
 
 from src.metrics import compute_errors
-from src.physics import pnp_3d_exact, pnp_3d_residuals
+from src.physics import (
+    make_pnp_3d_informer,
+    pnp_3d_exact,
+    pnp_3d_residuals_dvr,
+)
 
 
 def _init_wandb(cfg):
@@ -62,12 +66,17 @@ def main(cfg: DictConfig) -> None:
         dtype=dtype,
     )
     xyz = mapper3d.xyz_nodes
-    lap = mapper3d.laplacian
     D1x, D1y, D1z = mapper3d.D1x, mapper3d.D1y, mapper3d.D1z
+    D2x, D2y, D2z = mapper3d.D2x, mapper3d.D2y, mapper3d.D2z
     w = mapper3d.weights
     w_norm = w / w.sum()
     N_total = dom.Nx * dom.Ny * dom.Nz
     lambda_bc = float(phys.lambda_bc)
+
+    # DVR-collocation informer for the 3 coupled 3D interior residuals.
+    informer = make_pnp_3d_informer(
+        D1x, D1y, D1z, D2x, D2y, D2z, device=str(xyz.device)
+    )
 
     flat_elem = [{"N": N_total, "a": -1.0, "b": 1.0}]
     model_kw = dict(
@@ -97,7 +106,7 @@ def main(cfg: DictConfig) -> None:
         c_K = net_K()
         c_Cl = net_Cl()
         phi = net_phi()
-        l_K, l_Cl, l_phi = pnp_3d_residuals(c_K, c_Cl, phi, lap, D1x, D1y, D1z, w_norm, xyz)
+        l_K, l_Cl, l_phi = pnp_3d_residuals_dvr(informer, c_K, c_Cl, phi, w_norm, xyz)
         return l_K + l_Cl + l_phi + lambda_bc * bc_loss(c_K, c_Cl, phi)
 
     adam = torch.optim.Adam(all_params, lr=cfg.train.adam_lr)

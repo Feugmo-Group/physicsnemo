@@ -6,7 +6,7 @@
 
 Three coupled field networks (cp, cn, phi) are evaluated on a (Nt × Nx)
 tensor-product LGL grid.  Each network outputs a flat (Nt·Nx,) vector that
-is reshaped to (Nt, Nx) for spectral differentiation.
+is reshaped to (Nt, Nx) for DVR differentiation.
 
 Run:
     python src/trainer.py
@@ -31,7 +31,11 @@ from physicsnemo.experimental.models.scen import SCENElementNetwork
 from physicsnemo.optim import TwoPhaseOptimizer
 
 from src.metrics import compute_errors
-from src.physics import pnp_unsteady_ic_loss, pnp_unsteady_residuals
+from src.physics import (
+    make_pnp_unsteady_informer,
+    pnp_unsteady_ic_loss,
+    pnp_unsteady_residuals_dvr,
+)
 
 
 def _init_wandb(cfg):
@@ -84,6 +88,9 @@ def main(cfg: DictConfig) -> None:
     net_cn = SCENElementNetwork(flat_element, **model_kwargs)
     net_phi = SCENElementNetwork(flat_element, **model_kwargs)
 
+    # DVR-collocation informer for the 3 coupled space-time residuals.
+    informer = make_pnp_unsteady_informer(D1x, D2x, D1t, device=str(x_grid.device))
+
     lambda_ic = float(phys.lambda_ic)
     lambda_bc = float(phys.lambda_bc)
 
@@ -96,7 +103,7 @@ def main(cfg: DictConfig) -> None:
         cp = net_cp().view(Nt, Nx)
         cn = net_cn().view(Nt, Nx)
         phi = net_phi().view(Nt, Nx)
-        l_cp, l_cn, l_phi = pnp_unsteady_residuals(cp, cn, phi, D1x, D2x, D1t, w_xt, x_grid, t_grid)
+        l_cp, l_cn, l_phi = pnp_unsteady_residuals_dvr(informer, cp, cn, phi, w_xt, x_grid, t_grid)
         ic = pnp_unsteady_ic_loss(cp, cn, phi, x_grid)
         return l_cp + l_cn + l_phi + lambda_ic * ic
 

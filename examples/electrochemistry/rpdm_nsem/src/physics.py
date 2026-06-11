@@ -14,10 +14,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Refined Point Defect Model (RPDM) — spectral-collocation (NSEM/SCEN) physics.
+"""Refined Point Defect Model (RPDM) — DVR-collocation (NSEM/SCEN) physics.
 
-This is the spectral (precomputed-operator, no-autodiff) reimplementation of the
-autodiff PINN RPDM example.  The dimensionless model lives on a *fixed* reference
+This is the DVR-collocation (precomputed-operator, no-autodiff) reimplementation
+of the autodiff PINN RPDM example.  Derivatives come from precomputed Gauss-
+Lobatto-Legendre ``DVRMapper`` differentiation matrices — this is *not*
+``PhysicsInformer(grad_method="spectral")``, which is FFT differentiation on a
+periodic uniform grid.  The dimensionless model lives on a *fixed* reference
 domain ``x in [0, 1]`` (Landau-transformed spatial coordinate) and ``y in [0, yf]``
 (dimensionless time).  The moving metal/film/solution boundary enters through the
 film-thickness field ``l(y)`` and its time derivative ``l_y``.
@@ -57,6 +60,7 @@ from dataclasses import dataclass, field
 import sympy as sp
 import torch
 
+from physicsnemo.experimental.models.scen import AxisOperator, DVRPhysicsInformer
 from physicsnemo.sym.eq.pde import PDE
 
 
@@ -223,7 +227,7 @@ class NondimGroups:
 
 
 class PointDefectModel(PDE):
-    """Inline SymPy ``PDE`` for the passive RPDM (spectral-collocation port).
+    """Inline SymPy ``PDE`` for the passive RPDM (DVR-collocation port).
 
     This is the symbolic statement of the same interior + interface residuals
     that were previously hand-coded in :func:`rpdm_residuals`.  Building it as a
@@ -236,7 +240,7 @@ class PointDefectModel(PDE):
     :class:`NondimGroups` instance, so the symbolic residuals are numerically
     identical to the original tensor algebra (verified to float64 round-off by
     ``tests/test_pde_parity.py``).  ``phiext`` is the *constant* external
-    potential here (the spectral example targets the constant-voltage case), so
+    potential here (the DVR-collocation example targets the constant-voltage case), so
     it enters as a Number rather than a symbolic ``Eext(y)``.
 
     Equation/leaf conventions (``diff_str == "__"``):
@@ -252,6 +256,7 @@ class PointDefectModel(PDE):
     name = "RPDM"
 
     def __init__(self, g: NondimGroups):
+        self.dim = 2
         x = sp.Symbol("x")
         y = sp.Symbol("y")
         input_variables = {"x": x, "y": y}
@@ -348,6 +353,50 @@ def make_computations_by_name(
     return {c.outputs[0]: c for c in pde.make_computations(detach_names=detach_names)}
 
 
+def make_interior_informer(
+    g: NondimGroups,
+    D1x: torch.Tensor,
+    D2x: torch.Tensor,
+    D1y: torch.Tensor,
+    device: str | None = None,
+) -> "DVRPhysicsInformer":
+    """Build a DVR-collocation informer for the full-grid interior residuals.
+
+    Routes the three interior terms (``poisson``, ``transport_CV``,
+    ``transport_AV``) through :class:`DVRPhysicsInformer`, the same unified API
+    used by the autodiff RPDM example.  The boundary-flux and film-growth ODE
+    terms are *not* full-grid residuals and stay on the sliced-``Computation``
+    path in :func:`rpdm_residuals`.
+
+    Parameters
+    ----------
+    g : NondimGroups
+        Nondimensional groups that parameterise :class:`PointDefectModel`.
+    D1x, D2x : torch.Tensor
+        Block-diagonal spatial first/second-derivative operators ``(Nx, Nx)``
+        (grid axis 1).
+    D1y : torch.Tensor
+        Time first-derivative operator ``(Nt, Nt)`` (grid axis 0).
+    device : str or None, optional
+        Device for the informer.
+
+    Returns
+    -------
+    DVRPhysicsInformer
+        ``forward({"cCV", "cAV", "phif", "l", "x"})`` returns the three interior
+        residual fields keyed by ``_INTERIOR_TERMS``.
+    """
+    return DVRPhysicsInformer(
+        required_outputs=list(_INTERIOR_TERMS),
+        equations=PointDefectModel(g),
+        operators={
+            "x": AxisOperator(axis=1, D1=D1x, D2=D2x),
+            "y": AxisOperator(axis=0, D1=D1y, D2=None),
+        },
+        device=device,
+    )
+
+
 # Residual terms integrated over the full space-time grid vs. those evaluated
 # only on the x=0 / x=1 interface columns (per time slice).
 _INTERIOR_TERMS = ("poisson", "transport_CV", "transport_AV")
@@ -421,13 +470,17 @@ def rpdm_residuals(
     x_grid: torch.Tensor,
     g: NondimGroups,
     comps: dict[str, "object"],
+    informer: "DVRPhysicsInformer",
 ) -> dict[str, torch.Tensor]:
     """Per-term weighted squared-residual losses for the passive RPDM.
 
-    The residual *expressions* come from :class:`PointDefectModel`'s symbolic
-    equations via :meth:`make_computations`; this function only supplies the
-    precomputed-operator derivatives (the ``"__"`` leaves) and reduces each
-    raw residual to a weighted MSE with the same quadrature as before.
+    The interior full-grid residuals (``poisson``, ``transport_CV``,
+    ``transport_AV``) are evaluated through ``informer`` — a
+    :class:`DVRPhysicsInformer`, the same unified API as the autodiff RPDM
+    example.  The boundary-flux and film-growth ODE terms are *not* full-grid
+    residuals, so they remain on the sliced-:class:`Computation` path using
+    ``comps`` (both come from the same :class:`PointDefectModel` symbolic PDE,
+    so the residual expressions are identical).
 
     Parameters
     ----------
@@ -440,6 +493,8 @@ def rpdm_residuals(
     g : :class:`NondimGroups`.
     comps : dict mapping equation name -> :class:`Computation`, as returned by
         :func:`make_computations_by_name` (i.e. ``PointDefectModel.make_computations``).
+    informer : :class:`DVRPhysicsInformer`
+        Built by :func:`make_interior_informer`; evaluates the interior terms.
 
     Returns
     -------
@@ -448,10 +503,16 @@ def rpdm_residuals(
     full grid; ``film_growth`` over time; interface terms over time on the
     x=0 / x=1 edges.
     """
+    Nt, Nx = cCV.shape
+    lfull = lvec.unsqueeze(1).expand(Nt, Nx)
+    x_bc = x_grid.unsqueeze(0).expand(Nt, Nx)
     full = _build_full_var_dict(cCV, cAV, phif, lvec, D1x, D2x, D1y, x_grid)
 
-    # ── Interior residuals on the full (Nt, Nx) grid ──────────────────────────
-    R = {t: comps[t].evaluate(full)[t] for t in _INTERIOR_TERMS}
+    # ── Interior residuals on the full (Nt, Nx) grid via the DVR informer ─────
+    interior = informer.forward(
+        {"cCV": cCV, "cAV": cAV, "phif": phif, "l": lfull, "x": x_bc}
+    )
+    R = {t: interior[t] for t in _INTERIOR_TERMS}
 
     # ── Film-growth ODE in time (passive) ─────────────────────────────────────
     # phimf = phif at the metal/film interface (x = 0), supplied detached-by-name

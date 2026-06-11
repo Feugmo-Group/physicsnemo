@@ -35,7 +35,13 @@ from physicsnemo.optim import TwoPhaseOptimizer
 from physicsnemo.optim.loss_landscape import loss_landscape_scan, plot_landscape
 
 from src.metrics import compute_errors
-from src.physics import all_interface_losses, cd_bc_loss, cd_exact, cd_residual
+from src.physics import (
+    all_interface_losses,
+    cd_bc_loss,
+    cd_exact,
+    cd_residual_dvr,
+    make_cd_informer,
+)
 
 
 def _init_wandb(cfg):
@@ -104,6 +110,12 @@ def main(cfg: DictConfig) -> None:
     sizes = net.element_sizes
     D1_elems = [net.mappers[k].D1 for k in range(K)]
 
+    # DVR-collocation informer for the interior residual ε u″ + a u′ (global
+    # block-diagonal operators); identical to the hand-rolled residual.
+    informer = make_cd_informer(
+        eps, a_conv, D1_global, D2_global, device=str(x_global.device)
+    )
+
     # ── Stage 1: pretrain to exact solution shape ─────────────────────────────
     n_pretrain = int(cfg.train.get("n_pretrain", 0))
     if n_pretrain > 0:
@@ -132,7 +144,7 @@ def main(cfg: DictConfig) -> None:
         u = net()
         u_elems = _split(u)
         loss = (
-            cd_residual(u, D1_global, D2_global, w_norm_global, eps, a_conv)
+            cd_residual_dvr(informer, u, w_norm_global)
             + lambda_bc * cd_bc_loss(u)
         )
         if K > 1:
@@ -166,7 +178,7 @@ def main(cfg: DictConfig) -> None:
     def _landscape_closure():
         u = net()
         u_elems = _split(u)
-        pde = float(cd_residual(u, D1_global, D2_global, w_norm_global, eps, a_conv))
+        pde = float(cd_residual_dvr(informer, u, w_norm_global))
         bc = float(lambda_bc * cd_bc_loss(u))
         result = {"pde": pde, "bc": bc}
         if K > 1:

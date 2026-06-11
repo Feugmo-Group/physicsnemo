@@ -23,9 +23,88 @@ from __future__ import annotations
 
 import math
 
+import sympy as sp
 import torch
 
+from physicsnemo.experimental.models.scen import AxisOperator, DVRPhysicsInformer
+from physicsnemo.sym.eq.pde import PDE
+
 PI = math.pi
+
+
+class PnpSteadyPDE(PDE):
+    """Symbolic 1D steady Poisson-Nernst-Planck system for :class:`DVRPhysicsInformer`.
+
+    Three coupled fields ``cp``, ``cn``, ``phi``; the manufactured forcing terms
+    enter as leaf functions ``fv``, ``fw`` whose precomputed values are supplied
+    at evaluation time (see :func:`pnp_steady_residuals_dvr`).
+    """
+
+    name = "PnpSteady"
+
+    def __init__(self):
+        self.dim = 1
+        x = sp.Symbol("x")
+        cp = sp.Function("cp")(x)
+        cn = sp.Function("cn")(x)
+        phi = sp.Function("phi")(x)
+        fv = sp.Function("fv")(x)
+        fw = sp.Function("fw")(x)
+        c30 = sp.Number(1.0 / 30.0)
+        c20 = sp.Number(1.0 / 20.0)
+        pi2 = sp.Number(PI**2)
+        self.equations = {
+            "res_cp": cp.diff(x, 2) + pi2 * (cn + phi),
+            "res_cn": cn.diff(x, 2)
+            + c30 * (cn.diff(x, 1) * cp.diff(x, 1) + cn * cp.diff(x, 2))
+            + fv,
+            "res_phi": phi.diff(x, 2)
+            + c20 * (phi.diff(x, 1) * cp.diff(x, 1) + phi * cp.diff(x, 2))
+            + fw,
+        }
+
+
+def make_pnp_steady_informer(
+    D1: torch.Tensor, D2: torch.Tensor, device: str | None = None
+) -> DVRPhysicsInformer:
+    """Build a DVR-collocation informer for the steady PNP system.
+
+    Parameters
+    ----------
+    D1, D2 : torch.Tensor
+        First/second-derivative DVR matrices (global), ``(N, N)``.
+    device : str or None, optional
+        Device for the informer.
+
+    Returns
+    -------
+    DVRPhysicsInformer
+    """
+    return DVRPhysicsInformer(
+        required_outputs=["res_cp", "res_cn", "res_phi"],
+        equations=PnpSteadyPDE(),
+        operators={"x": AxisOperator(axis=0, D1=D1, D2=D2)},
+        device=device,
+    )
+
+
+def pnp_steady_residuals_dvr(
+    informer: DVRPhysicsInformer,
+    cp: torch.Tensor,
+    cn: torch.Tensor,
+    phi: torch.Tensor,
+    w_norm: torch.Tensor,
+    x: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Quadrature-weighted interior residual losses via the DVR informer."""
+    f_v, f_w = pnp_steady_sources(x)
+    res = informer.forward(
+        {"cp": cp, "cn": cn, "phi": phi, "fv": f_v, "fw": f_w, "x": x}
+    )
+    r_cp = res["res_cp"].reshape(-1)
+    r_cn = res["res_cn"].reshape(-1)
+    r_phi = res["res_phi"].reshape(-1)
+    return w_norm @ (r_cp * r_cp), w_norm @ (r_cn * r_cn), w_norm @ (r_phi * r_phi)
 
 
 def pnp_steady_sources(x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:

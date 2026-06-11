@@ -24,7 +24,100 @@ Space-time SCEN approach:
 
 from __future__ import annotations
 
+import sympy as sp
 import torch
+
+from physicsnemo.experimental.models.scen import AxisOperator, DVRPhysicsInformer
+from physicsnemo.sym.eq.pde import PDE
+
+
+class PnpUnsteadyPDE(PDE):
+    """Symbolic space-time PNP system for :class:`DVRPhysicsInformer`.
+
+    Spatial coordinate is ``x``, time is ``y``.  Three coupled fields ``cp``,
+    ``cn``, ``phi``; the manufactured forcings enter as leaf functions ``f1``,
+    ``f2`` whose precomputed values are supplied at evaluation time.
+    """
+
+    name = "PnpUnsteady"
+
+    def __init__(self):
+        self.dim = 2
+        x, y = sp.Symbol("x"), sp.Symbol("y")
+        cp = sp.Function("cp")(x, y)
+        cn = sp.Function("cn")(x, y)
+        phi = sp.Function("phi")(x, y)
+        f1 = sp.Function("f1")(x, y)
+        f2 = sp.Function("f2")(x, y)
+        self.equations = {
+            "res_cp": cp.diff(y, 1)
+            - cp.diff(x, 2)
+            - cp.diff(x, 1) * phi.diff(x, 1)
+            - cp * phi.diff(x, 2)
+            - f1,
+            "res_cn": cn.diff(y, 1)
+            - cn.diff(x, 2)
+            + cn.diff(x, 1) * phi.diff(x, 1)
+            + cn * phi.diff(x, 2)
+            - f2,
+            "res_phi": phi.diff(x, 2) + cp - cn,
+        }
+
+
+def make_pnp_unsteady_informer(
+    D1x: torch.Tensor,
+    D2x: torch.Tensor,
+    D1t: torch.Tensor,
+    device: str | None = None,
+) -> DVRPhysicsInformer:
+    """Build a DVR-collocation informer for the space-time PNP system.
+
+    Parameters
+    ----------
+    D1x, D2x : torch.Tensor
+        Spatial first/second-derivative DVR matrices ``(Nx, Nx)`` (grid axis 1).
+    D1t : torch.Tensor
+        Time first-derivative DVR matrix ``(Nt, Nt)`` (grid axis 0).
+    device : str or None, optional
+        Device for the informer.
+
+    Returns
+    -------
+    DVRPhysicsInformer
+    """
+    return DVRPhysicsInformer(
+        required_outputs=["res_cp", "res_cn", "res_phi"],
+        equations=PnpUnsteadyPDE(),
+        operators={
+            "x": AxisOperator(axis=1, D1=D1x, D2=D2x),
+            "y": AxisOperator(axis=0, D1=D1t, D2=None),
+        },
+        device=device,
+    )
+
+
+def pnp_unsteady_residuals_dvr(
+    informer: DVRPhysicsInformer,
+    cp: torch.Tensor,
+    cn: torch.Tensor,
+    phi: torch.Tensor,
+    w_xt: torch.Tensor,
+    x_grid: torch.Tensor,
+    t_grid: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Weighted space-time residual losses via the DVR informer."""
+    x2d = x_grid.unsqueeze(0).expand_as(cp)
+    t2d = t_grid.unsqueeze(1).expand_as(cp)
+    f1, f2 = pnp_unsteady_sources(x2d, t2d)
+    res = informer.forward(
+        {"cp": cp, "cn": cn, "phi": phi, "f1": f1, "f2": f2}
+    )
+    r_cp, r_cn, r_phi = res["res_cp"], res["res_cn"], res["res_phi"]
+    return (
+        (w_xt * r_cp**2).sum(),
+        (w_xt * r_cn**2).sum(),
+        (w_xt * r_phi**2).sum(),
+    )
 
 
 def pnp_unsteady_exact(x: torch.Tensor, t: torch.Tensor):
@@ -83,7 +176,7 @@ def pnp_unsteady_residuals(
     t2d = t_grid.unsqueeze(1).expand_as(cp)
     f1, f2 = pnp_unsteady_sources(x2d, t2d)
 
-    # Time derivatives via spectral matrix (applied row-wise over x)
+    # Time derivatives via DVR differentiation matrix (applied row-wise over x)
     dcp_dt = D1t @ cp      # (Nt, Nx)
     dcn_dt = D1t @ cn
 

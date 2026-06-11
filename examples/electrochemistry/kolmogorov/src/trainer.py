@@ -31,7 +31,11 @@ from physicsnemo.experimental.models.scen import DVRMapper2D, SCENElementNetwork
 from physicsnemo.optim import TwoPhaseOptimizer
 
 from src.metrics import compute_errors
-from src.physics import kolmogorov_bc_loss, kolmogorov_residual
+from src.physics import (
+    kolmogorov_bc_loss,
+    kolmogorov_residuals_dvr,
+    make_kolmogorov_informer,
+)
 
 
 def _init_wandb(cfg):
@@ -70,7 +74,7 @@ def main(cfg: DictConfig) -> None:
     )
     xy = mapper2d.xy_nodes
     D1x, D1y = mapper2d.D1x, mapper2d.D1y
-    lap = mapper2d.laplacian
+    D2x, D2y = mapper2d.D2x, mapper2d.D2y
     w = mapper2d.weights
     w_norm = w / w.sum()
     N_total = dom.Nx * dom.Ny
@@ -85,18 +89,33 @@ def main(cfg: DictConfig) -> None:
         poly_degree=cfg.model.poly_degree,
         dtype=dtype_str,
     )
+    # Mixed (stream-vorticity) formulation: a second network for the vorticity
+    # ω, recasting the biharmonic equation as two coupled second-order residuals.
+    net_omega = SCENElementNetwork(
+        element_configs,
+        hidden_dim=cfg.model.hidden_dim,
+        n_layers=cfg.model.n_layers,
+        backbone=cfg.model.backbone,
+        poly_degree=cfg.model.poly_degree,
+        dtype=dtype_str,
+    )
 
     print(f"\nBackbone: {cfg.model.backbone} (poly_degree={cfg.model.poly_degree})")
-    print(f"Parameters: {sum(p.numel() for p in net.parameters()):,}")
+    params = list(net.parameters()) + list(net_omega.parameters())
+    print(f"Parameters: {sum(p.numel() for p in params):,}")
 
-    adam = torch.optim.Adam(net.parameters(), lr=cfg.train.adam_lr)
-    lbfgs = torch.optim.LBFGS(net.parameters(), line_search_fn="strong_wolfe", max_iter=20)
+    informer = make_kolmogorov_informer(D1x, D1y, D2x, D2y, nu, device=str(w.device))
+    lambda_w = float(phys.get("lambda_w", 1.0))
+    adam = torch.optim.Adam(params, lr=cfg.train.adam_lr)
+    lbfgs = torch.optim.LBFGS(params, line_search_fn="strong_wolfe", max_iter=20)
     opt = TwoPhaseOptimizer(adam, lbfgs)
 
     def closure():
         psi = net()
+        omega = net_omega()
+        l_w, l_vort = kolmogorov_residuals_dvr(informer, psi, omega, w_norm, xy, n_force)
         return (
-            kolmogorov_residual(psi, D1x, D1y, lap, w_norm, xy, nu, n_force)
+            l_vort + lambda_w * l_w
             + lambda_mean * kolmogorov_bc_loss(psi, w_norm)
         )
 

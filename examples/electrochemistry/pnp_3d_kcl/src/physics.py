@@ -24,9 +24,104 @@ from __future__ import annotations
 
 import math
 
+import sympy as sp
 import torch
 
+from physicsnemo.experimental.models.scen import AxisOperator, DVRPhysicsInformer
+from physicsnemo.sym.eq.pde import PDE
+
 PI = math.pi
+
+
+class Pnp3DPDE(PDE):
+    """Symbolic 3D steady PNP system for :class:`DVRPhysicsInformer`.
+
+    Three coupled fields ``cK``, ``cCl``, ``phi`` on a unit cube; the
+    manufactured forcings enter as leaf functions ``fK``, ``fCl`` supplied at
+    evaluation time.
+    """
+
+    name = "Pnp3D"
+
+    def __init__(self):
+        self.dim = 3
+        x, y, z = sp.symbols("x y z")
+        cK = sp.Function("cK")(x, y, z)
+        cCl = sp.Function("cCl")(x, y, z)
+        phi = sp.Function("phi")(x, y, z)
+        fK = sp.Function("fK")(x, y, z)
+        fCl = sp.Function("fCl")(x, y, z)
+
+        def lap(f):
+            return f.diff(x, 2) + f.diff(y, 2) + f.diff(z, 2)
+
+        def grad_dot(a, b):
+            return (
+                a.diff(x, 1) * b.diff(x, 1)
+                + a.diff(y, 1) * b.diff(y, 1)
+                + a.diff(z, 1) * b.diff(z, 1)
+            )
+
+        self.equations = {
+            "res_K": -lap(cK) - (grad_dot(cK, phi) + cK * lap(phi)) - fK,
+            "res_Cl": -lap(cCl) + (grad_dot(cCl, phi) + cCl * lap(phi)) - fCl,
+            "res_phi": -lap(phi) - (cK - cCl),
+        }
+
+
+def make_pnp_3d_informer(
+    D1x: torch.Tensor,
+    D1y: torch.Tensor,
+    D1z: torch.Tensor,
+    D2x: torch.Tensor,
+    D2y: torch.Tensor,
+    D2z: torch.Tensor,
+    device: str | None = None,
+) -> DVRPhysicsInformer:
+    """Build a DVR-collocation informer for the 3D steady PNP system.
+
+    Parameters
+    ----------
+    D1x, D1y, D1z : torch.Tensor
+        First-derivative DVR operators (flattened 3D), each ``(N, N)``.
+    D2x, D2y, D2z : torch.Tensor
+        Second-derivative DVR operators (flattened 3D), each ``(N, N)``.
+    device : str or None, optional
+        Device for the informer.
+
+    Returns
+    -------
+    DVRPhysicsInformer
+    """
+    return DVRPhysicsInformer(
+        required_outputs=["res_K", "res_Cl", "res_phi"],
+        equations=Pnp3DPDE(),
+        operators={
+            "x": AxisOperator(axis=0, D1=D1x, D2=D2x),
+            "y": AxisOperator(axis=0, D1=D1y, D2=D2y),
+            "z": AxisOperator(axis=0, D1=D1z, D2=D2z),
+        },
+        device=device,
+    )
+
+
+def pnp_3d_residuals_dvr(
+    informer: DVRPhysicsInformer,
+    c_K: torch.Tensor,
+    c_Cl: torch.Tensor,
+    phi: torch.Tensor,
+    w_norm: torch.Tensor,
+    xyz: torch.Tensor,
+) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    """Weighted quadrature residuals for the 3D steady PNP system via the informer."""
+    f_K, f_Cl = pnp_3d_sources(xyz)
+    res = informer.forward(
+        {"cK": c_K, "cCl": c_Cl, "phi": phi, "fK": f_K, "fCl": f_Cl}
+    )
+    r_k = res["res_K"].reshape(-1)
+    r_cl = res["res_Cl"].reshape(-1)
+    r_phi = res["res_phi"].reshape(-1)
+    return w_norm @ (r_k * r_k), w_norm @ (r_cl * r_cl), w_norm @ (r_phi * r_phi)
 
 
 def pnp_3d_exact(xyz: torch.Tensor):
