@@ -41,14 +41,13 @@ LegendreKAN                    — full 1→1 multi-layer Kolmogorov-Arnold netw
 
 from __future__ import annotations
 
-from typing import Optional
-
 import torch
 import torch.nn as nn
+from jaxtyping import Float
 
 import physicsnemo
 from physicsnemo.core.meta import ModelMetaData
-
+from physicsnemo.nn.functional import legendre_polynomials
 
 # ---------------------------------------------------------------------------
 # Basis and matrix utilities
@@ -58,8 +57,9 @@ from physicsnemo.core.meta import ModelMetaData
 def legendre_basis(x: torch.Tensor, K: int) -> torch.Tensor:
     """Evaluate Legendre polynomials P_0, P_1, …, P_K at each point in x.
 
-    Uses the 3-term recurrence relation; no in-place operations so the
-    computation graph is preserved for vmap + functional_call.
+    Thin wrapper over the shared
+    :func:`physicsnemo.nn.functional.legendre_polynomials` (3-term recurrence,
+    no in-place ops, so the graph is preserved for vmap + functional_call).
 
     Parameters
     ----------
@@ -73,13 +73,7 @@ def legendre_basis(x: torch.Tensor, K: int) -> torch.Tensor:
     P : torch.Tensor
         Shape ``(*batch, K+1)``.  ``P[..., k] = P_k(x)``.
     """
-    polys = [torch.ones_like(x)]
-    if K >= 1:
-        polys.append(x)
-    for k in range(2, K + 1):
-        pk = ((2 * k - 1) * x * polys[-1] - (k - 1) * polys[-2]) / k
-        polys.append(pk)
-    return torch.stack(polys, dim=-1)
+    return torch.stack(legendre_polynomials(x, K + 1), dim=-1)
 
 
 def make_legendre_dleg(
