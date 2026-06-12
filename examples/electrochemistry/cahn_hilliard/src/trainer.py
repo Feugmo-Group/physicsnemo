@@ -18,6 +18,8 @@ _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 if _ROOT not in sys.path:
     sys.path.insert(0, _ROOT)
 
+import math
+
 import hydra
 import torch
 from omegaconf import DictConfig, OmegaConf
@@ -27,6 +29,7 @@ from physicsnemo.optim import TwoPhaseOptimizer
 
 from src.metrics import compute_diagnostics
 from src.physics import (
+    _f_prime,
     cahn_hilliard_mass_loss,
     cahn_hilliard_noflux_bc_mixed,
     cahn_hilliard_residuals_dvr,
@@ -100,6 +103,26 @@ def main(cfg: DictConfig) -> None:
 
     informer = make_ch_informer(eps_sq, D2, device=str(w.device))
     params = list(net.parameters()) + list(net_mu.parameters())
+
+    # ── Pretrain: seed a phase-separated profile (symmetry breaking) ──────────
+    # Without this the coupled system relaxes to the trivial uniform state
+    # c == c_mean (which has zero residual).  Seed c to a tanh interface of width
+    # ~ε√2 centred in the domain and μ to the consistent f'(c) − ε²c_xx.
+    n_pretrain = int(cfg.train.get("n_pretrain", 0))
+    if n_pretrain > 0:
+        x_nodes = torch.cat([m.nodes for m in net.mappers])
+        width = math.sqrt(eps_sq) * math.sqrt(2.0)
+        with torch.no_grad():
+            c_seed = c_mean + (1.0 - c_mean) * torch.tanh(x_nodes / width)
+            mu_seed = _f_prime(c_seed) - eps_sq * (D2 @ c_seed)
+        pre_opt = torch.optim.Adam(params, lr=float(cfg.train.pretrain_lr))
+        for step in range(n_pretrain):
+            pre_opt.zero_grad()
+            loss_pre = ((net() - c_seed) ** 2).mean() + ((net_mu() - mu_seed) ** 2).mean()
+            loss_pre.backward()
+            pre_opt.step()
+        print(f"  pretrain final MSE: {loss_pre.item():.3e}")
+
     adam = torch.optim.Adam(params, lr=cfg.train.adam_lr)
     lbfgs = torch.optim.LBFGS(params, line_search_fn="strong_wolfe", max_iter=20)
     opt = TwoPhaseOptimizer(adam, lbfgs)
