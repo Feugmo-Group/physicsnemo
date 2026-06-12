@@ -13,7 +13,9 @@ model:
   poly_degree: 6
 
 train:
-  n_adam: 10000
+  n_pretrain: 5000   # seed (ψ, ω) near the exact forced steady state
+  pretrain_lr: 1.0e-3
+  n_adam: 0          # stiff recipe: skip Adam, go pretrain → L-BFGS
   n_lbfgs: 500
   adam_lr: 5.0e-4
   seed: 42

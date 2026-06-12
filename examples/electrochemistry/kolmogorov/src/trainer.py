@@ -33,6 +33,7 @@ from physicsnemo.optim import TwoPhaseOptimizer
 from src.metrics import compute_errors
 from src.physics import (
     kolmogorov_bc_loss,
+    kolmogorov_exact,
     kolmogorov_residuals_dvr,
     make_kolmogorov_informer,
 )
@@ -106,6 +107,23 @@ def main(cfg: DictConfig) -> None:
 
     informer = make_kolmogorov_informer(D1x, D1y, D2x, D2y, nu, device=str(w.device))
     lambda_w = float(phys.get("lambda_w", 1.0))
+
+    # ── Pretrain: seed (ψ, ω) near the exact solution (stiff-problem recipe) ───
+    # ψ* = −sin(n·y)/(ν·n²); ω* = ∇²ψ*.  Without this the coupled biharmonic
+    # system settles far from the forced steady state.
+    n_pretrain = int(cfg.train.get("n_pretrain", 0))
+    if n_pretrain > 0:
+        with torch.no_grad():
+            psi_t = kolmogorov_exact(xy, nu, n_force)
+            omega_t = (D2x + D2y) @ psi_t
+        pre_opt = torch.optim.Adam(params, lr=float(cfg.train.get("pretrain_lr", 1e-3)))
+        for step in range(n_pretrain):
+            pre_opt.zero_grad()
+            loss_pre = ((net() - psi_t) ** 2).mean() + ((net_omega() - omega_t) ** 2).mean()
+            loss_pre.backward()
+            pre_opt.step()
+        print(f"  pretrain final MSE: {loss_pre.item():.3e}")
+
     adam = torch.optim.Adam(params, lr=cfg.train.adam_lr)
     lbfgs = torch.optim.LBFGS(params, line_search_fn="strong_wolfe", max_iter=20)
     opt = TwoPhaseOptimizer(adam, lbfgs)
