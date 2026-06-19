@@ -1,0 +1,21 @@
+name,method,porosity,n_particles,smooth_sigma,porosity_target,seed,shape,tif_path
+ellipsoid_01,ellipsoid,0.929567813873291,80.0,,,0,"(128, 128, 128)",runs/synthetic_library/ellipsoid_01_bin.tif
+ellipsoid_02,ellipsoid,0.8820147514343262,150.0,,,1,"(128, 128, 128)",runs/synthetic_library/ellipsoid_02_bin.tif
+ellipsoid_03,ellipsoid,0.8351421356201172,220.0,,,2,"(128, 128, 128)",runs/synthetic_library/ellipsoid_03_bin.tif
+ellipsoid_04,ellipsoid,0.7881875038146973,300.0,,,3,"(128, 128, 128)",runs/synthetic_library/ellipsoid_04_bin.tif
+ellipsoid_05,ellipsoid,0.737968921661377,380.0,,,4,"(128, 128, 128)",runs/synthetic_library/ellipsoid_05_bin.tif
+ellipsoid_06,ellipsoid,0.7181553840637207,450.0,,,5,"(128, 128, 128)",runs/synthetic_library/ellipsoid_06_bin.tif
+ellipsoid_07,ellipsoid,0.6857080459594727,520.0,,,6,"(128, 128, 128)",runs/synthetic_library/ellipsoid_07_bin.tif
+ellipsoid_08,ellipsoid,0.657050609588623,600.0,,,7,"(128, 128, 128)",runs/synthetic_library/ellipsoid_08_bin.tif
+grf_p55_s03,grf,0.5500001907348633,,3.0,0.55,100,"(128, 128, 128)",runs/synthetic_library/grf_p55_s03_bin.tif
+grf_p55_s05,grf,0.5500001907348633,,5.0,0.55,101,"(128, 128, 128)",runs/synthetic_library/grf_p55_s05_bin.tif
+grf_p55_s08,grf,0.5500001907348633,,8.0,0.55,102,"(128, 128, 128)",runs/synthetic_library/grf_p55_s08_bin.tif
+grf_p55_s12,grf,0.5500001907348633,,12.0,0.55,103,"(128, 128, 128)",runs/synthetic_library/grf_p55_s12_bin.tif
+grf_p40_s03,grf,0.40000009536743164,,3.0,0.4,104,"(128, 128, 128)",runs/synthetic_library/grf_p40_s03_bin.tif
+grf_p40_s05,grf,0.40000009536743164,,5.0,0.4,105,"(128, 128, 128)",runs/synthetic_library/grf_p40_s05_bin.tif
+grf_p40_s08,grf,0.40000009536743164,,8.0,0.4,106,"(128, 128, 128)",runs/synthetic_library/grf_p40_s08_bin.tif
+grf_p40_s12,grf,0.40000009536743164,,12.0,0.4,107,"(128, 128, 128)",runs/synthetic_library/grf_p40_s12_bin.tif
+grf_p28_s03,grf,0.2800002098083496,,3.0,0.28,108,"(128, 128, 128)",runs/synthetic_library/grf_p28_s03_bin.tif
+grf_p28_s05,grf,0.2800002098083496,,5.0,0.28,109,"(128, 128, 128)",runs/synthetic_library/grf_p28_s05_bin.tif
+grf_p28_s08,grf,0.2800002098083496,,8.0,0.28,110,"(128, 128, 128)",runs/synthetic_library/grf_p28_s08_bin.tif
+grf_p28_s12,grf,0.2800002098083496,,12.0,0.28,111,"(128, 128, 128)",runs/synthetic_library/grf_p28_s12_bin.tif
