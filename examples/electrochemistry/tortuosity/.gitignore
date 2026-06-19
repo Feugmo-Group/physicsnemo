@@ -1,0 +1,16 @@
+# Large binary data — not tracked in git
+data/synthetic_library/*.tif
+data/synthetic_library/*.npz
+data/synthetic_library_200/*.tif
+data/synthetic_library_200/*.npz
+data/e2_results/*.pt
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.venv/
+
+# Runtime
+*.pid
